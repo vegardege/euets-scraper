@@ -9,6 +9,12 @@ authors = [
 requires-python = ">=3.11"
 dependencies = []
 
+[project.optional-dependencies]
+cli = ["typer>=0.21.1"]
+
+[project.scripts]
+euets = "euets_scraper.cli:app"
+
 [build-system]
 requires = ["uv_build>=0.9.15,<0.10.0"]
 build-backend = "uv_build"
@@ -18,4 +24,5 @@ dev = [
     "pytest>=9.0.2",
     "ruff>=0.14.14",
     "ty>=0.0.14",
+    "typer>=0.21.1",
 ]
