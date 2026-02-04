@@ -4,7 +4,12 @@ from pathlib import Path
 import pytest
 from bs4 import BeautifulSoup
 
-from euets_scraper.scraper import Link, _parse_accordion, download_datasets
+from euets_scraper.scraper import (
+    Link,
+    _parse_accordion,
+    download_datasets,
+    download_datasets_simple,
+)
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -44,11 +49,21 @@ def test_parse_accordion_superseded():
 
 @pytest.mark.slow
 @pytest.mark.asyncio
-async def test_download_datasets_integration():
-    """Integration test that hits the live site. Run with: pytest -m slow"""
-    result = await download_datasets()
+async def test_download_datasets_simple_integration():
+    """Integration test for simple (httpx) scrape."""
+    result = await download_datasets_simple()
+
+    assert len(result.datasets) >= 1  # At least the current dataset
+    assert len(result.errors) == 0
+
+
+@pytest.mark.slow
+@pytest.mark.asyncio
+async def test_download_datasets_full_integration():
+    """Integration test for full (playwright) scrape."""
+    result = await download_datasets(full=True)
 
     assert len(result.datasets) >= 20  # Should have many datasets
     assert any(not ds.superseded for ds in result.datasets)  # At least one current
     assert any(ds.superseded for ds in result.datasets)  # At least one superseded
-    assert len(result.errors) == 0  # No errors expected
+    assert len(result.errors) == 0

@@ -2,8 +2,8 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import TypeVar
 
+import httpx
 from bs4 import BeautifulSoup, Tag
-from playwright.async_api import async_playwright
 from pydantic import AnyUrl, BaseModel
 
 T = TypeVar("T")
@@ -144,8 +144,28 @@ def _parse_accordion(accordion: Tag) -> Dataset:
     )
 
 
-async def download_datasets(url: str = ROOT_URL) -> ScrapeResult:
-    """Download all available datasets from the EU ETS datahub.
+def _scrape_accordions(soup: BeautifulSoup) -> ScrapeResult:
+    """Parse all accordion elements from a BeautifulSoup document."""
+    datasets: list[Dataset] = []
+    errors: list[ScrapeError] = []
+
+    for accordion in soup.select(".datasets-tab .accordion.ui"):
+        acc_id = accordion.get("id")
+        if not isinstance(acc_id, str):
+            continue
+        try:
+            datasets.append(_parse_accordion(accordion))
+        except ValueError as e:
+            errors.append(ScrapeError(accordion_id=acc_id, message=str(e)))
+
+    return ScrapeResult(datasets=datasets, errors=errors)
+
+
+async def download_datasets_simple(url: str = ROOT_URL) -> ScrapeResult:
+    """Fast scrape using httpx. Only gets datasets visible without JavaScript.
+
+    This typically returns the current dataset and one superseded dataset.
+    Use download_datasets_full() to get all historical datasets.
 
     Args:
         url: Root URL to EU ETS datahub
@@ -153,6 +173,30 @@ async def download_datasets(url: str = ROOT_URL) -> ScrapeResult:
     Returns:
         A ScrapeResult containing successfully parsed datasets and any errors
     """
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url)
+        response.raise_for_status()
+
+    soup = BeautifulSoup(response.text, "html.parser")
+    return _scrape_accordions(soup)
+
+
+async def download_datasets_full(url: str = ROOT_URL) -> ScrapeResult:
+    """Full scrape using playwright. Gets all datasets including older tabs.
+
+    Requires the 'full' extra.
+
+    Args:
+        url: Root URL to EU ETS datahub
+
+    Returns:
+        A ScrapeResult containing successfully parsed datasets and any errors
+    """
+    try:
+        from playwright.async_api import async_playwright
+    except ImportError:
+        raise ImportError("playwright is required for full scrape") from None
+
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         try:
@@ -188,3 +232,20 @@ async def download_datasets(url: str = ROOT_URL) -> ScrapeResult:
             await browser.close()
 
     return ScrapeResult(datasets=datasets, errors=errors)
+
+
+async def download_datasets(url: str = ROOT_URL, *, full: bool = False) -> ScrapeResult:
+    """Download datasets from the EU ETS datahub.
+
+    Args:
+        url: Root URL to EU ETS datahub.
+        full: If True, use playwright to get all historical datasets.
+              Requires the 'full' extra.
+
+    Returns:
+        A ScrapeResult containing successfully parsed datasets and any errors
+    """
+    if full:
+        return await download_datasets_full(url)
+    else:
+        return await download_datasets_simple(url)
