@@ -46,8 +46,9 @@ def test_parse_accordion_superseded():
 @pytest.mark.asyncio
 async def test_download_datasets_integration():
     """Integration test that hits the live site. Run with: pytest -m slow"""
-    datasets = await download_datasets()
+    result = await download_datasets()
 
-    assert len(datasets) >= 20  # Should have many datasets
-    assert any(not ds.superseded for ds in datasets)  # At least one current
-    assert any(ds.superseded for ds in datasets)  # At least one superseded
+    assert len(result.datasets) >= 20  # Should have many datasets
+    assert any(not ds.superseded for ds in result.datasets)  # At least one current
+    assert any(ds.superseded for ds in result.datasets)  # At least one superseded
+    assert len(result.errors) == 0  # No errors expected

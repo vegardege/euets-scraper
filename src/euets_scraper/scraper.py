@@ -1,4 +1,3 @@
-import logging
 from collections.abc import Callable
 from datetime import datetime
 from typing import TypeVar
@@ -7,16 +6,8 @@ from bs4 import BeautifulSoup, Tag
 from playwright.async_api import async_playwright
 from pydantic import AnyUrl, BaseModel
 
-logger = logging.getLogger(__name__)
-
 T = TypeVar("T")
 
-# This page appears to be updated regularly. On 2025-07-29, it was listed as:
-#
-#   Published 29 Sept 2022  Last modified 17 Jun 2025
-#
-# If the page stops updating, we may need a more sophisticated way of finding the
-# latest version of the data.
 ROOT_URL = (
     "https://www.eea.europa.eu/en/datahub/datahubitem-view/"
     "98f04097-26de-4fca-86c4-63834818c0c0"
@@ -24,7 +15,7 @@ ROOT_URL = (
 
 
 class Link(BaseModel):
-    """A labeled link."""
+    """A labeled link associated with a dataset."""
 
     label: str
     url: AnyUrl
@@ -47,25 +38,34 @@ class Dataset(BaseModel):
     links: list[Link]
 
 
+class ScrapeError(BaseModel):
+    """An error encountered while scraping a dataset."""
+
+    accordion_id: str | None
+    message: str
+
+
+class ScrapeResult(BaseModel):
+    """Result of scraping datasets from the EU ETS datahub."""
+
+    datasets: list[Dataset]
+    errors: list[ScrapeError]
+
+
 def _parse_date(text: str) -> datetime | None:
     """Parse date from format like '9 May 2019' or '1 Jul 2025'."""
     text = text.strip()
     try:
         return datetime.strptime(text, "%d %b %Y")
     except ValueError:
-        logger.warning(f"Could not parse published date: {text.strip()}")
         return None
 
 
 def _parse_years(text: str) -> tuple[int, int] | None:
     """Parse temporal coverage from format like '2005-2024'."""
-    text = text.strip()
-    if len(text) != 9 or "-" not in text:
-        logger.warning(f"Unexpected temporal coverage format: {text}")
     try:
         return int(text[0:4]), int(text[5:9])
     except ValueError:
-        logger.warning(f"Unexpected temporal coverage format: {text}")
         return None
 
 
@@ -84,125 +84,74 @@ def _extract_field(
     return None
 
 
+def _select(parent: Tag, selector: str) -> Tag:
+    """Select a required element or raise ValueError."""
+    element = parent.select_one(selector)
+    if element is None:
+        raise ValueError(f"Missing required element: {selector}")
+    return element
+
+
 def _parse_accordion(accordion: Tag) -> Dataset:
     """Parse a single accordion element into a Dataset."""
-    acc_id = accordion.get("id", "")
+    acc_id = str(accordion.get("id", ""))
 
-    # Title and format
-    title_span = accordion.select_one(".dataset-title")
-    if not title_span:
-        raise ValueError("No .dataset-title found")
+    # Extract required elements upfront
+    title_span = _select(accordion, ".dataset-title")
+    content = _select(accordion, ".content")
 
-    formats_span = title_span.select_one(".formats")
-    full_title = title_span.get_text(strip=True)
+    formats_span = _select(title_span, ".formats")
+    format_label = _select(formats_span, ".dh-label")
 
-    # Extract format and superseded status
-    format_text = ""
-    superseded = False
-    if formats_span:
-        formats_text = formats_span.get_text(strip=True)
-        full_title = full_title.replace(formats_text, "").strip()
+    # Title, format, and superseded status
+    full_title = next(title_span.stripped_strings)
+    format_text = format_label.get_text(strip=True)
+    superseded = "Superseded" in formats_span.get_text()
 
-        # Check for format label (non-inverted)
-        format_label = formats_span.select_one(".dh-label:not(.inverted)")
-        if format_label:
-            format_text = format_label.get_text(strip=True)
+    # Metadata
+    published = _extract_field(content, "Published:", _parse_date)
+    coverage = _extract_field(content, "Temporal coverage:", _parse_years)
+    if not coverage:
+        raise ValueError("Missing required field: temporal coverage")
 
-        # Check for superseded (inverted label)
-        inverted_label = formats_span.select_one(".dh-label.inverted")
-        if inverted_label:
-            superseded = "superseded" in inverted_label.get_text(strip=True).lower()
+    # Collect all links, then extract special ones
+    all_links: dict[str, str] = {}
+    for a in content.select("a"):
+        label = a.get_text(strip=True)
+        href = a.get("href")
+        if isinstance(href, str):
+            all_links[label] = href
 
-    # Content section
-    content = accordion.select_one(".content")
-    if not content:
-        raise ValueError("No .content found")
+    if "Direct download" not in all_links:
+        raise ValueError("Missing required field: Direct download")
+    if "Metadata Factsheet" not in all_links:
+        raise ValueError("Missing required field: Metadata Factsheet")
 
-    dataset_content = content.select_one(".dataset-content")
-
-    # Published date
-    published: datetime | None = None
-    if dataset_content:
-        published = _extract_field(dataset_content, "Published:", _parse_date)
-
-    # Temporal coverage (required)
-    if not dataset_content:
-        raise ValueError("No .dataset-content found")
-    temporal_coverage = _extract_field(
-        dataset_content, "Temporal coverage:", _parse_years
-    )
-    if not temporal_coverage:
-        raise ValueError("No temporal coverage found")
-
-    # Metadata factsheet (required)
-    meta_link = dataset_content.select_one(".dataset-pdf a")
-    if not meta_link:
-        raise ValueError("No metadata factsheet link found")
-    metadata_factsheet = meta_link.get("href")
-    if not isinstance(metadata_factsheet, str):
-        raise ValueError("Invalid metadata factsheet href")
-
-    # Direct download (required)
-    direct_download: str | None = None
-    for span in content.find_all("span"):
-        if span.string == "Direct download":
-            direct_link = span.find_parent("a")
-            if direct_link:
-                href = direct_link.get("href")
-                if isinstance(href, str):
-                    direct_download = href
-            break
-    if not direct_download:
-        raise ValueError("No direct download link found")
-
-    # Other downloads (not "Direct download") and links
-    links: list[Link] = []
-
-    # Collect non-direct downloads
-    for h5 in content.find_all("h5"):
-        if h5.string and "Download" in h5.string:
-            downloads_container = h5.find_next_sibling()
-            if downloads_container:
-                for link in downloads_container.select("a"):
-                    href = link.get("href")
-                    label = link.get_text(strip=True)
-                    if isinstance(href, str) and label != "Direct download":
-                        links.append(Link(label=label, url=AnyUrl(href)))
-            break
-
-    # Collect links section
-    for h5 in content.find_all("h5"):
-        if h5.string and "Links" in h5.string:
-            links_container = h5.find_next_sibling()
-            if links_container:
-                for link in links_container.select("a"):
-                    href = link.get("href")
-                    label = link.get_text(strip=True)
-                    if isinstance(href, str):
-                        links.append(Link(label=label, url=AnyUrl(href)))
-            break
+    direct_download = all_links.pop("Direct download")
+    metadata_factsheet = all_links.pop("Metadata Factsheet")
+    links = [Link(label=label, url=AnyUrl(url)) for label, url in all_links.items()]
 
     return Dataset(
-        id=str(acc_id),
+        id=acc_id,
         title=full_title,
         format=format_text,
         superseded=superseded,
         published=published,
-        temporal_coverage=temporal_coverage,
+        temporal_coverage=coverage,
         metadata_factsheet=AnyUrl(metadata_factsheet),
         direct_download=AnyUrl(direct_download),
         links=links,
     )
 
 
-async def download_datasets(url: str = ROOT_URL) -> list[Dataset]:
+async def download_datasets(url: str = ROOT_URL) -> ScrapeResult:
     """Download all available datasets from the EU ETS datahub.
 
     Args:
         url: Root URL to EU ETS datahub
 
     Returns:
-        A list of dataset objects
+        A ScrapeResult containing successfully parsed datasets and any errors
     """
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
@@ -215,6 +164,7 @@ async def download_datasets(url: str = ROOT_URL) -> list[Dataset]:
             # Each tab reveals different datasets (e.g., 2005-2024, 2005-2023, etc.)
             seen_ids: set[str] = set()
             datasets: list[Dataset] = []
+            errors: list[ScrapeError] = []
 
             menu_items = page.locator(".datasets-tab .ui.menu .item")
             for item in await menu_items.all():
@@ -228,8 +178,13 @@ async def download_datasets(url: str = ROOT_URL) -> list[Dataset]:
                     acc_id = accordion.get("id")
                     if isinstance(acc_id, str) and acc_id not in seen_ids:
                         seen_ids.add(acc_id)
-                        datasets.append(_parse_accordion(accordion))
+                        try:
+                            datasets.append(_parse_accordion(accordion))
+                        except ValueError as e:
+                            errors.append(
+                                ScrapeError(accordion_id=acc_id, message=str(e))
+                            )
         finally:
             await browser.close()
 
-    return datasets
+    return ScrapeResult(datasets=datasets, errors=errors)
