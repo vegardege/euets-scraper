@@ -7,7 +7,12 @@ authors = [
     { name = "Vegard Egeland", email = "vegardegeland@gmail.com" }
 ]
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "beautifulsoup4>=4.14.3",
+    "httpx>=0.28.1",
+    "playwright>=1.58.0",
+    "pydantic>=2.12.5",
+]
 
 [project.optional-dependencies]
 cli = ["typer>=0.21.1"]
@@ -22,7 +27,14 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
+    "pytest-asyncio>=1.0.0",
     "ruff>=0.14.14",
     "ty>=0.0.14",
     "typer>=0.21.1",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
 ]
