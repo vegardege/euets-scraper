@@ -21,3 +21,25 @@ Then run:
 ```bash
 euets --help
 ```
+
+## Development
+
+```bash
+git clone https://github.com/vegardege/euets
+cd euets
+uv sync
+uv run playwright install chromium
+```
+
+### Testing
+
+```bash
+# Run unit tests (excluding slow integration tests)
+uv run pytest -m "not slow"
+
+# Run slow integration tests only
+uv run pytest -m slow
+
+# Run all tests
+uv run pytest
+```
