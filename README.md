@@ -12,7 +12,7 @@ pip install euets-scraper@git+https://github.com/vegardege/euets
 
 ### With full historical data support
 
-To scrape all historical datasets (requires playwright):
+To scrape all historical datasets (requires `playwright`):
 
 ```bash
 pip install euets-scraper[full]@git+https://github.com/vegardege/euets
@@ -34,16 +34,46 @@ euets --help
 ## Usage
 
 ```python
+import asyncio
 from euets_scraper import download_datasets
 
-# Simple scrape (httpx) - gets current + one superseded dataset
-result = await download_datasets()
+async def main():
+    # Simple scrape (httpx) - gets current + one superseded dataset
+    result = await download_datasets()
 
-# Full scrape (playwright) - gets all historical datasets
-result = await download_datasets(full=True)
+    # Full scrape (playwright) - gets all historical datasets
+    # result = await download_datasets(full=True)
 
-for dataset in result.datasets:
-    print(dataset.title, dataset.direct_download)
+    for dataset in result.datasets:
+        print(f"{dataset.title} ({dataset.temporal_coverage[0]}-{dataset.temporal_coverage[1]})")
+        print(f"  Download: {dataset.direct_download}")
+
+    # Check for parsing errors
+    for error in result.errors:
+        print(f"Failed to parse {error.dataset_id}: {error.message}")
+
+asyncio.run(main())
+```
+
+### Data structures
+
+```python
+from euets_scraper import Dataset, ETSResult, ParseError, Link
+
+# ETSResult contains:
+#   datasets: list[Dataset]  - successfully parsed datasets
+#   errors: list[ParseError] - parsing failures with dataset_id and message
+
+# Dataset contains:
+#   dataset_id: str
+#   title: str
+#   format: str
+#   superseded: bool
+#   published: datetime | None
+#   temporal_coverage: tuple[int, int]
+#   metadata_factsheet: AnyUrl
+#   direct_download: AnyUrl
+#   links: list[Link]
 ```
 
 ## Development
@@ -52,7 +82,7 @@ for dataset in result.datasets:
 git clone https://github.com/vegardege/euets
 cd euets
 uv sync
-uv run playwright install chromium
+uv run playwright install chromium  # needed for integration tests
 ```
 
 ### Testing

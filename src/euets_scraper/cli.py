@@ -3,7 +3,7 @@ try:
 except ImportError:
     import sys
 
-    print("CLI requires the 'cli' extra: pip install euets-scraper[cli]")
+    print("CLI requires the 'cli' extra")
     sys.exit(1)
 
 app = typer.Typer()

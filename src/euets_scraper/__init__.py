@@ -1,8 +1,8 @@
 from euets_scraper.scraper import (
     Dataset,
+    ETSResult,
     Link,
-    ScrapeError,
-    ScrapeResult,
+    ParseError,
     download_datasets,
     download_datasets_full,
     download_datasets_simple,
@@ -10,9 +10,9 @@ from euets_scraper.scraper import (
 
 __all__ = [
     "Dataset",
+    "ETSResult",
     "Link",
-    "ScrapeError",
-    "ScrapeResult",
+    "ParseError",
     "download_datasets",
     "download_datasets_full",
     "download_datasets_simple",

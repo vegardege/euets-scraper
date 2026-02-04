@@ -24,7 +24,7 @@ class Link(BaseModel):
 class Dataset(BaseModel):
     """An EU ETS dataset available in the datahub."""
 
-    id: str
+    dataset_id: str
 
     title: str
     format: str
@@ -38,18 +38,18 @@ class Dataset(BaseModel):
     links: list[Link]
 
 
-class ScrapeError(BaseModel):
-    """An error encountered while scraping a dataset."""
+class ParseError(BaseModel):
+    """An error encountered while parsing a dataset."""
 
-    accordion_id: str | None
+    dataset_id: str | None
     message: str
 
 
-class ScrapeResult(BaseModel):
-    """Result of scraping datasets from the EU ETS datahub."""
+class ETSResult(BaseModel):
+    """Result of fetching datasets from the EU ETS datahub."""
 
     datasets: list[Dataset]
-    errors: list[ScrapeError]
+    errors: list[ParseError]
 
 
 def _parse_date(text: str) -> datetime | None:
@@ -64,7 +64,8 @@ def _parse_date(text: str) -> datetime | None:
 def _parse_years(text: str) -> tuple[int, int] | None:
     """Parse temporal coverage from format like '2005-2024'."""
     try:
-        return int(text[0:4]), int(text[5:9])
+        start, end = text.split("-")
+        return int(start), int(end)
     except ValueError:
         return None
 
@@ -77,10 +78,9 @@ def _extract_field(
     """Extract a field from a <strong>Label:</strong> value pattern."""
     for strong in container.find_all("strong"):
         if strong.string and label in strong.string:
-            if strong.parent:
-                text = strong.parent.get_text(strip=True)
-                text = text.replace(label, "").strip()
-                return parser(text)
+            sibling = strong.next_sibling
+            if sibling:
+                return parser(str(sibling).strip())
     return None
 
 
@@ -94,7 +94,7 @@ def _select(parent: Tag, selector: str) -> Tag:
 
 def _parse_accordion(accordion: Tag) -> Dataset:
     """Parse a single accordion element into a Dataset."""
-    acc_id = str(accordion.get("id", ""))
+    dataset_id = str(accordion.get("id", ""))
 
     # Extract required elements upfront
     title_span = _select(accordion, ".dataset-title")
@@ -132,7 +132,7 @@ def _parse_accordion(accordion: Tag) -> Dataset:
     links = [Link(label=label, url=AnyUrl(url)) for label, url in all_links.items()]
 
     return Dataset(
-        id=acc_id,
+        dataset_id=dataset_id,
         title=full_title,
         format=format_text,
         superseded=superseded,
@@ -144,10 +144,10 @@ def _parse_accordion(accordion: Tag) -> Dataset:
     )
 
 
-def _scrape_accordions(soup: BeautifulSoup) -> ScrapeResult:
+def _parse_accordions(soup: BeautifulSoup) -> ETSResult:
     """Parse all accordion elements from a BeautifulSoup document."""
     datasets: list[Dataset] = []
-    errors: list[ScrapeError] = []
+    errors: list[ParseError] = []
 
     for accordion in soup.select(".datasets-tab .accordion.ui"):
         acc_id = accordion.get("id")
@@ -156,12 +156,12 @@ def _scrape_accordions(soup: BeautifulSoup) -> ScrapeResult:
         try:
             datasets.append(_parse_accordion(accordion))
         except ValueError as e:
-            errors.append(ScrapeError(accordion_id=acc_id, message=str(e)))
+            errors.append(ParseError(dataset_id=acc_id, message=str(e)))
 
-    return ScrapeResult(datasets=datasets, errors=errors)
+    return ETSResult(datasets=datasets, errors=errors)
 
 
-async def download_datasets_simple(url: str = ROOT_URL) -> ScrapeResult:
+async def download_datasets_simple(url: str = ROOT_URL) -> ETSResult:
     """Fast scrape using httpx. Only gets datasets visible without JavaScript.
 
     This typically returns the current dataset and one superseded dataset.
@@ -171,17 +171,17 @@ async def download_datasets_simple(url: str = ROOT_URL) -> ScrapeResult:
         url: Root URL to EU ETS datahub
 
     Returns:
-        A ScrapeResult containing successfully parsed datasets and any errors
+        An ETSResult containing successfully parsed datasets and any errors
     """
     async with httpx.AsyncClient() as client:
         response = await client.get(url)
         response.raise_for_status()
 
     soup = BeautifulSoup(response.text, "html.parser")
-    return _scrape_accordions(soup)
+    return _parse_accordions(soup)
 
 
-async def download_datasets_full(url: str = ROOT_URL) -> ScrapeResult:
+async def download_datasets_full(url: str = ROOT_URL) -> ETSResult:
     """Full scrape using playwright. Gets all datasets including older tabs.
 
     Requires the 'full' extra.
@@ -190,7 +190,7 @@ async def download_datasets_full(url: str = ROOT_URL) -> ScrapeResult:
         url: Root URL to EU ETS datahub
 
     Returns:
-        A ScrapeResult containing successfully parsed datasets and any errors
+        An ETSResult containing successfully parsed datasets and any errors
     """
     try:
         from playwright.async_api import async_playwright
@@ -208,11 +208,12 @@ async def download_datasets_full(url: str = ROOT_URL) -> ScrapeResult:
             # Each tab reveals different datasets (e.g., 2005-2024, 2005-2023, etc.)
             seen_ids: set[str] = set()
             datasets: list[Dataset] = []
-            errors: list[ScrapeError] = []
+            errors: list[ParseError] = []
 
             menu_items = page.locator(".datasets-tab .ui.menu .item")
             for item in await menu_items.all():
                 await item.click()
+                # Brief wait for tab content to render; no reliable selector to wait for
                 await page.wait_for_timeout(300)
 
                 html = await page.content()
@@ -225,16 +226,14 @@ async def download_datasets_full(url: str = ROOT_URL) -> ScrapeResult:
                         try:
                             datasets.append(_parse_accordion(accordion))
                         except ValueError as e:
-                            errors.append(
-                                ScrapeError(accordion_id=acc_id, message=str(e))
-                            )
+                            errors.append(ParseError(dataset_id=acc_id, message=str(e)))
         finally:
             await browser.close()
 
-    return ScrapeResult(datasets=datasets, errors=errors)
+    return ETSResult(datasets=datasets, errors=errors)
 
 
-async def download_datasets(url: str = ROOT_URL, *, full: bool = False) -> ScrapeResult:
+async def download_datasets(url: str = ROOT_URL, *, full: bool = False) -> ETSResult:
     """Download datasets from the EU ETS datahub.
 
     Args:
@@ -243,7 +242,7 @@ async def download_datasets(url: str = ROOT_URL, *, full: bool = False) -> Scrap
               Requires the 'full' extra.
 
     Returns:
-        A ScrapeResult containing successfully parsed datasets and any errors
+        An ETSResult containing successfully parsed datasets and any errors
     """
     if full:
         return await download_datasets_full(url)

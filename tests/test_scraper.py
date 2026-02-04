@@ -7,9 +7,11 @@ from bs4 import BeautifulSoup
 from euets_scraper.scraper import (
     Link,
     _parse_accordion,
+    _parse_accordions,
     download_datasets,
     download_datasets_simple,
 )
+
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -22,7 +24,7 @@ def test_parse_accordion_current():
 
     dataset = _parse_accordion(accordion)
 
-    assert dataset.id == "1098253"
+    assert dataset.dataset_id == "1098253"
     assert "EU ETS" in dataset.title
     assert dataset.format == "ascii (.csv, .txt, .sql)"
     assert dataset.superseded is False
@@ -41,10 +43,33 @@ def test_parse_accordion_superseded():
 
     dataset = _parse_accordion(accordion)
 
-    assert dataset.id == "1087604"
+    assert dataset.dataset_id == "1087604"
     assert dataset.superseded is True
     assert dataset.published == datetime(2023, 4, 20)
     assert dataset.temporal_coverage == (2005, 2023)
+
+
+def test_parse_accordions_collects_errors():
+    """Test that parsing errors are collected without stopping valid datasets."""
+    html = (FIXTURES_DIR / "accordions_with_errors.html").read_text()
+    soup = BeautifulSoup(html, "html.parser")
+
+    result = _parse_accordions(soup)
+
+    # Valid dataset should be parsed
+    assert len(result.datasets) == 1
+    assert result.datasets[0].dataset_id == "valid-1"
+    assert result.datasets[0].temporal_coverage == (2005, 2024)
+
+    # Errors should be collected for malformed accordions
+    assert len(result.errors) == 2
+    error_ids = {e.dataset_id for e in result.errors}
+    assert error_ids == {"missing-coverage", "missing-download"}
+
+    # Check error messages are descriptive
+    errors_by_id = {e.dataset_id: e for e in result.errors}
+    assert "temporal coverage" in errors_by_id["missing-coverage"].message.lower()
+    assert "direct download" in errors_by_id["missing-download"].message.lower()
 
 
 @pytest.mark.slow
