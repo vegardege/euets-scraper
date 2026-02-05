@@ -1,6 +1,6 @@
 # EU ETS Scraper
 
-[![CI](https://github.com/vegardege/euets/actions/workflows/ci.yml/badge.svg)](https://github.com/vegardege/euets/actions/workflows/ci.yml)
+[![CI](https://github.com/vegardege/euets-scraper/actions/workflows/ci.yml/badge.svg)](https://github.com/vegardege/euets-scraper/actions/workflows/ci.yml)
 
 Scrape carbon quotas from EU ETS.
 
@@ -35,7 +35,7 @@ euets ls
 euets ls --full
 
 # JSON output for scripting
-euets ls --json | jq '.[0].direct_download'
+euets ls --json | jq '.[0].dataset_id'
 
 # Get the ID of the most recent dataset
 euets latest
@@ -56,7 +56,6 @@ async def main():
 
     for dataset in result.datasets:
         print(f"{dataset.title} ({dataset.temporal_coverage[0]}-{dataset.temporal_coverage[1]})")
-        print(f"  Download: {dataset.direct_download}")
 
     # Check for parsing errors
     for error in result.errors:
@@ -81,8 +80,7 @@ from euets_scraper import Dataset, ETSResult, ParseError, Link
 #   superseded: bool
 #   published: datetime | None
 #   temporal_coverage: tuple[int, int]
-#   metadata_factsheet: AnyUrl
-#   direct_download: AnyUrl
+#   factsheet: AnyUrl
 #   links: list[Link]
 ```
 
