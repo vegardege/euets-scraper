@@ -40,9 +40,21 @@ def ls(
         "-f",
         help="Use playwright to fetch all historical datasets",
     ),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        "-j",
+        help="Output as JSON for scripting",
+    ),
 ) -> None:
     """List available datasets from the EU ETS datahub."""
     result = asyncio.run(download_datasets(full=full))
+
+    if json_output:
+        import json
+
+        print(json.dumps([ds.model_dump(mode="json") for ds in result.datasets]))
+        return
 
     if not result.datasets and not result.errors:
         console.print("[yellow]No datasets found.[/yellow]")

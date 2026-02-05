@@ -25,10 +25,20 @@ playwright install chromium
 pip install euets-scraper[cli]@git+https://github.com/vegardege/euets
 ```
 
-Then run:
+## CLI
 
 ```bash
-euets --help
+# List all datasets in a table
+euets ls
+
+# Include historical datasets (requires playwright)
+euets ls --full
+
+# JSON output for scripting
+euets ls --json | jq '.[0].direct_download'
+
+# Get the ID of the most recent dataset
+euets latest
 ```
 
 ## Usage
