@@ -8,6 +8,7 @@ from euets_scraper.scraper import (
     Link,
     _parse_accordion,
     _parse_accordions,
+    _resolve_download_url_from_html,
     download_datasets,
     download_datasets_simple,
 )
@@ -54,20 +55,31 @@ def test_parse_accordions_collects_errors():
 
     result = _parse_accordions(soup)
 
-    # Valid dataset should be parsed
-    assert len(result.datasets) == 1
-    assert result.datasets[0].dataset_id == "valid-1"
-    assert result.datasets[0].temporal_coverage == (2005, 2024)
+    # Valid datasets should be parsed (Direct download is optional)
+    assert len(result.datasets) == 2
+    dataset_ids = {ds.dataset_id for ds in result.datasets}
+    assert dataset_ids == {"valid-1", "missing-download"}
 
     # Errors should be collected for malformed accordions
-    assert len(result.errors) == 2
-    error_ids = {e.dataset_id for e in result.errors}
-    assert error_ids == {"missing-coverage", "missing-download"}
+    assert len(result.errors) == 1
+    assert result.errors[0].dataset_id == "missing-coverage"
+    assert "temporal coverage" in result.errors[0].message.lower()
 
-    # Check error messages are descriptive
-    errors_by_id = {e.dataset_id: e for e in result.errors}
-    assert "temporal coverage" in errors_by_id["missing-coverage"].message.lower()
-    assert "direct download" in errors_by_id["missing-download"].message.lower()
+
+def test_resolve_download_url_from_html():
+    """Test extracting zip URL from download page HTML."""
+    html = (FIXTURES_DIR / "download_page.html").read_text()
+    url = _resolve_download_url_from_html(html)
+
+    assert url == "https://sdi.eea.europa.eu/datashare/s/qWap6qsoLxQorSq/download"
+
+
+def test_resolve_download_url_from_html_missing_link():
+    """Test error when download link is missing."""
+    html = "<html><body><span>No download here</span></body></html>"
+
+    with pytest.raises(ValueError, match="Download all files"):
+        _resolve_download_url_from_html(html)
 
 
 @pytest.mark.slow
@@ -90,3 +102,25 @@ async def test_download_datasets_full_integration():
     assert any(not ds.superseded for ds in result.datasets)  # At least one current
     assert any(ds.superseded for ds in result.datasets)  # At least one superseded
     assert len(result.errors) == 0
+
+
+@pytest.mark.slow
+@pytest.mark.asyncio
+async def test_dataset_url_and_files_integration():
+    """Integration test for Dataset.url() and Dataset.files()."""
+    result = await download_datasets_simple()
+    current = [ds for ds in result.datasets if not ds.superseded]
+    assert len(current) >= 1
+
+    dataset = current[0]
+
+    # Test url() returns a valid zip URL
+    url = await dataset.url()
+    assert url is not None
+    assert url.endswith("/download")
+
+    # Test files() returns archive contents
+    files = await dataset.files()
+    assert len(files) > 0
+    assert all(f.name for f in files)
+    assert all(f.size > 0 for f in files)

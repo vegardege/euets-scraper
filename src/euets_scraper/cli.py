@@ -33,20 +33,62 @@ def latest() -> None:
 
 
 @app.command("url")
-def url(
-    full: bool = typer.Option(
-        False,
-        "--full",
-        "-f",
-        help="Use playwright to fetch all historical datasets",
-    ),
-) -> None:
-    """Print the URL to the file archive of a dataset (latest by default)."""
-    result = asyncio.run(download_datasets(full=full))
+def url() -> None:
+    """Print the URL to the file archive of the latest dataset."""
+    result = asyncio.run(download_datasets(full=False))
     current = [ds for ds in result.datasets if not ds.superseded]
     if not current:
         raise typer.Exit(1)
-    print(asyncio.run(current[0].get_url() or ""))
+    archive_url = asyncio.run(current[0].url())
+    if not archive_url:
+        raise typer.Exit(1)
+    print(archive_url)
+
+
+def _format_size(size: int) -> str:
+    """Format file size in human-readable form."""
+    sizef = float(size)
+    for unit in ("B", "KB", "MB", "GB"):
+        if sizef < 1024:
+            return f"{sizef:.1f} {unit}" if unit != "B" else f"{sizef} {unit}"
+        sizef /= 1024
+    return f"{sizef:.1f} TB"
+
+
+@app.command("files")
+def files(
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        "-j",
+        help="Output as JSON for scripting",
+    ),
+) -> None:
+    """Print a list of files in the archive of the latest dataset."""
+    result = asyncio.run(download_datasets(full=False))
+    current = [ds for ds in result.datasets if not ds.superseded]
+    if not current:
+        raise typer.Exit(1)
+
+    archive_files = asyncio.run(current[0].files())
+    if not archive_files:
+        raise typer.Exit(1)
+
+    if json_output:
+        import json
+
+        print(json.dumps([f.model_dump() for f in archive_files]))
+        return
+
+    table = Table(title="Archive Files")
+    table.add_column("Name", style="cyan")
+    table.add_column("Type", style="dim")
+    table.add_column("Size", justify="right")
+
+    for f in archive_files:
+        table.add_row(f.name, f.file_type, _format_size(f.size))
+
+    console.print(table)
 
 
 @app.command("ls")

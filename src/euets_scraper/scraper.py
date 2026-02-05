@@ -1,3 +1,5 @@
+import io
+import zipfile
 from collections.abc import Callable
 from datetime import datetime
 from typing import TypeVar
@@ -21,6 +23,14 @@ class Link(BaseModel):
     url: AnyUrl
 
 
+class ArchiveFile(BaseModel):
+    """A file contained in a dataset archive."""
+
+    name: str
+    size: int
+    file_type: str
+
+
 class Dataset(BaseModel):
     """An EU ETS dataset available in the datahub."""
 
@@ -38,7 +48,7 @@ class Dataset(BaseModel):
 
     _cached_archive_url: str | None = PrivateAttr(default=None)
 
-    async def get_url(self) -> str | None:
+    async def url(self) -> str | None:
         """Get a direct URL to the zip archive of files for this dataset.
 
         This is _not_ the same as the "Direct download" link, which points to a
@@ -49,6 +59,12 @@ class Dataset(BaseModel):
                 if link.label == "Direct download":
                     self._cached_archive_url = await resolve_download_url(link.url)
         return self._cached_archive_url
+
+    async def files(self) -> list[ArchiveFile]:
+        """Get a list of all files in the 'Direct download' archive."""
+        if url := await self.url():
+            return await list_archive_files(url)
+        return []
 
 
 class ParseError(BaseModel):
@@ -135,8 +151,6 @@ def _parse_accordion(accordion: Tag) -> Dataset:
         if isinstance(href, str):
             all_links[label] = href
 
-    if "Direct download" not in all_links:
-        raise ValueError("Missing required field: Direct download")
     if "Metadata Factsheet" not in all_links:
         raise ValueError("Missing required field: Metadata Factsheet")
 
@@ -170,34 +184,6 @@ def _parse_accordions(soup: BeautifulSoup) -> ETSResult:
             errors.append(ParseError(dataset_id=acc_id, message=str(e)))
 
     return ETSResult(datasets=datasets, errors=errors)
-
-
-async def resolve_download_url(download_page: str | AnyUrl) -> str:
-    """Resolve a download page URL to the actual zip file URL.
-
-    The download page contains a "Download all files" button linking to the zip.
-
-    Args:
-        download_page: URL of the download page (from Dataset.download_page)
-
-    Returns:
-        The direct URL to the zip file
-
-    Raises:
-        ValueError: If the download link cannot be found on the page
-    """
-    async with httpx.AsyncClient() as client:
-        response = await client.get(str(download_page))
-        response.raise_for_status()
-
-    soup = BeautifulSoup(response.text, "html.parser")
-
-    if span := soup.find("span", text="Download all files"):
-        if link := span.find_parent("a"):
-            if href := link.get("href"):
-                return str(href)
-
-    raise ValueError("Could not find 'Download all files' link on page")
 
 
 async def download_datasets_simple(url: str = ROOT_URL) -> ETSResult:
@@ -287,3 +273,74 @@ async def download_datasets(url: str = ROOT_URL, *, full: bool = False) -> ETSRe
         return await download_datasets_full(url)
     else:
         return await download_datasets_simple(url)
+
+
+def _resolve_download_url_from_html(html: str) -> str:
+    """Extract the zip file URL from download page HTML.
+
+    Args:
+        html: HTML content of the download page
+
+    Returns:
+        The direct URL to the zip file
+
+    Raises:
+        ValueError: If the download link cannot be found
+    """
+    soup = BeautifulSoup(html, "html.parser")
+
+    for span in soup.find_all("span"):
+        if span.string == "Download all files":
+            if link := span.find_parent("a"):
+                if href := link.get("href"):
+                    return str(href)
+
+    raise ValueError("Could not find 'Download all files' link on page")
+
+
+async def resolve_download_url(download_page: str | AnyUrl) -> str:
+    """Resolve a download page URL to the actual zip file URL.
+
+    The download page contains a "Download all files" button linking to the zip.
+
+    Args:
+        download_page: URL of the "Direct download" page
+
+    Returns:
+        The direct URL to the zip file
+
+    Raises:
+        ValueError: If the download link cannot be found on the page
+    """
+    async with httpx.AsyncClient() as client:
+        response = await client.get(str(download_page))
+        response.raise_for_status()
+
+    return _resolve_download_url_from_html(response.text)
+
+
+def _get_file_type(filename: str) -> str:
+    """Get file type from extension."""
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    return ext if ext != filename.lower() else ""
+
+
+async def list_archive_files(url: str | AnyUrl) -> list[ArchiveFile]:
+    """List the files contained in a remote zip archive.
+
+    Downloads the archive to memory and reads its contents.
+    """
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(str(url))
+        resp.raise_for_status()
+
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as z:
+        return [
+            ArchiveFile(
+                name=info.filename.rsplit("/", 1)[-1],
+                size=info.file_size,
+                file_type=_get_file_type(info.filename),
+            )
+            for info in z.infolist()
+            if not info.is_dir()
+        ]
