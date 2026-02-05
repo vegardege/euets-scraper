@@ -32,6 +32,23 @@ def latest() -> None:
     print(current[0].dataset_id)
 
 
+@app.command("url")
+def url(
+    full: bool = typer.Option(
+        False,
+        "--full",
+        "-f",
+        help="Use playwright to fetch all historical datasets",
+    ),
+) -> None:
+    """Print the URL to the file archive of a dataset (latest by default)."""
+    result = asyncio.run(download_datasets(full=full))
+    current = [ds for ds in result.datasets if not ds.superseded]
+    if not current:
+        raise typer.Exit(1)
+    print(asyncio.run(current[0].get_url() or ""))
+
+
 @app.command("ls")
 def ls(
     full: bool = typer.Option(

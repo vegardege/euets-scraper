@@ -4,7 +4,7 @@ from typing import TypeVar
 
 import httpx
 from bs4 import BeautifulSoup, Tag
-from pydantic import AnyUrl, BaseModel
+from pydantic import AnyUrl, BaseModel, PrivateAttr
 
 T = TypeVar("T")
 
@@ -35,6 +35,20 @@ class Dataset(BaseModel):
 
     factsheet: AnyUrl
     links: list[Link]
+
+    _cached_archive_url: str | None = PrivateAttr(default=None)
+
+    async def get_url(self) -> str | None:
+        """Get a direct URL to the zip archive of files for this dataset.
+
+        This is _not_ the same as the "Direct download" link, which points to a
+        web reader and not the zip file itself.
+        """
+        if self._cached_archive_url is None:
+            for link in self.links:
+                if link.label == "Direct download":
+                    self._cached_archive_url = await resolve_download_url(link.url)
+        return self._cached_archive_url
 
 
 class ParseError(BaseModel):
@@ -178,7 +192,7 @@ async def resolve_download_url(download_page: str | AnyUrl) -> str:
 
     soup = BeautifulSoup(response.text, "html.parser")
 
-    if span := soup.find("span", string="Download all files"):
+    if span := soup.find("span", text="Download all files"):
         if link := span.find_parent("a"):
             if href := link.get("href"):
                 return str(href)
