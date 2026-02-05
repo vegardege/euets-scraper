@@ -22,6 +22,16 @@ app = typer.Typer(
 console = Console()
 
 
+@app.command("latest")
+def latest() -> None:
+    """Print the ID of the most recent dataset."""
+    result = asyncio.run(download_datasets(full=False))
+    current = [ds for ds in result.datasets if not ds.superseded]
+    if not current:
+        raise typer.Exit(1)
+    print(current[0].dataset_id)
+
+
 @app.command("ls")
 def ls(
     full: bool = typer.Option(
