@@ -79,6 +79,7 @@ dependencies = [
 
 [package.optional-dependencies]
 cli = [
+    { name = "rich" },
     { name = "typer" },
 ]
 full = [
@@ -101,6 +102,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "playwright", marker = "extra == 'full'" },
     { name = "pydantic", specifier = ">=2.12.5" },
+    { name = "rich", marker = "extra == 'cli'" },
     { name = "typer", marker = "extra == 'cli'" },
 ]
 provides-extras = ["full", "cli"]

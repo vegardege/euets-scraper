@@ -15,7 +15,7 @@ dependencies = [
 
 [project.optional-dependencies]
 full = ["playwright"]
-cli = ["typer"]
+cli = ["typer", "rich"]
 
 [project.scripts]
 euets = "euets_scraper.cli:app"
