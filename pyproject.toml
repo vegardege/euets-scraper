@@ -16,6 +16,10 @@ dependencies = [
 [project.optional-dependencies]
 full = ["playwright"]
 cli = ["typer", "rich"]
+cloud = ["fsspec"]
+s3 = ["fsspec", "s3fs"]
+gcs = ["fsspec", "gcsfs"]
+azure = ["fsspec", "adlfs"]
 
 [project.scripts]
 euets = "euets_scraper.cli:app"
@@ -26,6 +30,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "fsspec>=2026.1.0",
     "playwright",
     "pytest>=9.0.2",
     "pytest-asyncio>=1.0.0",
