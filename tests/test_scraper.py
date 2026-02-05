@@ -12,7 +12,6 @@ from euets_scraper.scraper import (
     download_datasets_simple,
 )
 
-
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
@@ -29,10 +28,9 @@ def test_parse_accordion_current():
     assert dataset.format == "ascii (.csv, .txt, .sql)"
     assert dataset.superseded is False
     assert dataset.temporal_coverage == (2005, 2024)
-    assert "sdi.eea.europa.eu/data" in str(dataset.direct_download)
-    assert len(dataset.links) == 5  # 1 other download + 4 links
+    assert len(dataset.links) == 6
     assert all(isinstance(link, Link) for link in dataset.links)
-    assert dataset.links[0].label == "EU Emissions Trading System data viewer Background note (July 2025)"
+    assert dataset.links[0].label == "Direct download"
 
 
 def test_parse_accordion_superseded():

@@ -33,8 +33,7 @@ class Dataset(BaseModel):
     published: datetime | None
     temporal_coverage: tuple[int, int]
 
-    metadata_factsheet: AnyUrl
-    direct_download: AnyUrl
+    factsheet: AnyUrl
     links: list[Link]
 
 
@@ -127,8 +126,7 @@ def _parse_accordion(accordion: Tag) -> Dataset:
     if "Metadata Factsheet" not in all_links:
         raise ValueError("Missing required field: Metadata Factsheet")
 
-    direct_download = all_links.pop("Direct download")
-    metadata_factsheet = all_links.pop("Metadata Factsheet")
+    factsheet = all_links.pop("Metadata Factsheet")
     links = [Link(label=label, url=AnyUrl(url)) for label, url in all_links.items()]
 
     return Dataset(
@@ -138,8 +136,7 @@ def _parse_accordion(accordion: Tag) -> Dataset:
         superseded=superseded,
         published=published,
         temporal_coverage=coverage,
-        metadata_factsheet=AnyUrl(metadata_factsheet),
-        direct_download=AnyUrl(direct_download),
+        factsheet=AnyUrl(factsheet),
         links=links,
     )
 
@@ -159,6 +156,34 @@ def _parse_accordions(soup: BeautifulSoup) -> ETSResult:
             errors.append(ParseError(dataset_id=acc_id, message=str(e)))
 
     return ETSResult(datasets=datasets, errors=errors)
+
+
+async def resolve_download_url(download_page: str | AnyUrl) -> str:
+    """Resolve a download page URL to the actual zip file URL.
+
+    The download page contains a "Download all files" button linking to the zip.
+
+    Args:
+        download_page: URL of the download page (from Dataset.download_page)
+
+    Returns:
+        The direct URL to the zip file
+
+    Raises:
+        ValueError: If the download link cannot be found on the page
+    """
+    async with httpx.AsyncClient() as client:
+        response = await client.get(str(download_page))
+        response.raise_for_status()
+
+    soup = BeautifulSoup(response.text, "html.parser")
+
+    if span := soup.find("span", string="Download all files"):
+        if link := span.find_parent("a"):
+            if href := link.get("href"):
+                return str(href)
+
+    raise ValueError("Could not find 'Download all files' link on page")
 
 
 async def download_datasets_simple(url: str = ROOT_URL) -> ETSResult:

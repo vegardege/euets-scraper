@@ -6,6 +6,7 @@ from euets_scraper.scraper import (
     download_datasets,
     download_datasets_full,
     download_datasets_simple,
+    resolve_download_url,
 )
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "download_datasets",
     "download_datasets_full",
     "download_datasets_simple",
+    "resolve_download_url",
 ]
