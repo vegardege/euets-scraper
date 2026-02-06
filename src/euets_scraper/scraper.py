@@ -82,7 +82,7 @@ class Dataset(BaseModel):
 
         Args:
             path: Destination path (local or cloud like s3://bucket/file.zip).
-                  If a directory, uses {dataset_id}.zip as filename.
+                  If a directory (local path or ends with /), uses {dataset_id}.zip as filename.
 
         Returns:
             The final path where the file was saved.
@@ -93,13 +93,14 @@ class Dataset(BaseModel):
 
         data = await self._get_archive_bytes()
 
-        # If local directory, append filename based on dataset ID
-        path_obj = Path(path)
-        if path_obj.is_dir():
-            path = path_obj / f"{self.dataset_id}.zip"
+        # Detect if path is a directory (local dir or trailing slash for cloud paths)
+        path_str = str(path)
+        is_dir = path_str.endswith("/") or Path(path).is_dir()
+        if is_dir:
+            path_str = f"{path_str.rstrip('/')}/{self.dataset_id}.zip"
 
-        write_bytes_to_path(data, path)
-        return str(path)
+        write_bytes_to_path(data, path_str)
+        return path_str
 
     async def extract(self, pattern: str, output_dir: str | Path = ".") -> list[str]:
         """Extract files matching a pattern from the archive.
