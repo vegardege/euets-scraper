@@ -9,9 +9,9 @@ from euets_scraper.scraper import (
     ETSResult,
     Link,
     ParseError,
-    download_datasets,
-    download_datasets_full,
-    download_datasets_simple,
+    fetch_datasets,
+    fetch_datasets_full,
+    fetch_datasets_simple,
     resolve_download_url,
 )
 
@@ -22,10 +22,10 @@ __all__ = [
     "Link",
     "ParseError",
     "download_archive",
-    "download_datasets",
-    "download_datasets_full",
-    "download_datasets_simple",
     "extract_files",
+    "fetch_datasets",
+    "fetch_datasets_full",
+    "fetch_datasets_simple",
     "list_archive_files",
     "resolve_download_url",
 ]

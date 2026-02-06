@@ -228,11 +228,11 @@ def _parse_accordions(soup: BeautifulSoup) -> ETSResult:
     return ETSResult(datasets=datasets, errors=errors)
 
 
-async def download_datasets_simple(url: str = ROOT_URL) -> ETSResult:
+async def fetch_datasets_simple(url: str = ROOT_URL) -> ETSResult:
     """Fast scrape using httpx. Only gets datasets visible without JavaScript.
 
     This typically returns the current dataset and one superseded dataset.
-    Use download_datasets_full() to get all historical datasets.
+    Use fetch_datasets_full() to get all historical datasets.
 
     Args:
         url: Root URL to EU ETS datahub
@@ -248,10 +248,10 @@ async def download_datasets_simple(url: str = ROOT_URL) -> ETSResult:
     return _parse_accordions(soup)
 
 
-async def download_datasets_full(url: str = ROOT_URL) -> ETSResult:
+async def fetch_datasets_full(url: str = ROOT_URL) -> ETSResult:
     """Full scrape using playwright. Gets all datasets including older tabs.
 
-    Requires the 'full' extra.
+    Requires the [playwright] extra.
 
     Args:
         url: Root URL to EU ETS datahub
@@ -300,21 +300,21 @@ async def download_datasets_full(url: str = ROOT_URL) -> ETSResult:
     return ETSResult(datasets=datasets, errors=errors)
 
 
-async def download_datasets(url: str = ROOT_URL, *, full: bool = False) -> ETSResult:
-    """Download datasets from the EU ETS datahub.
+async def fetch_datasets(url: str = ROOT_URL, *, full: bool = False) -> ETSResult:
+    """Fetch dataset metadata from the EU ETS datahub.
 
     Args:
         url: Root URL to EU ETS datahub.
         full: If True, use playwright to get all historical datasets.
-              Requires the 'full' extra.
+              Requires the [playwright] extra.
 
     Returns:
         An ETSResult containing successfully parsed datasets and any errors
     """
     if full:
-        return await download_datasets_full(url)
+        return await fetch_datasets_full(url)
     else:
-        return await download_datasets_simple(url)
+        return await fetch_datasets_simple(url)
 
 
 def _resolve_download_url_from_html(html: str) -> str:

@@ -10,7 +10,7 @@ except ImportError:
     print("CLI requires the 'cli' extra: pip install euets-scraper[cli]")
     sys.exit(1)
 
-from euets_scraper.scraper import Dataset, download_datasets
+from euets_scraper.scraper import Dataset, fetch_datasets
 
 # Common prefixes to strip from titles
 PREFIX = "European Union Emissions Trading System (EU ETS) data from "
@@ -22,13 +22,16 @@ app = typer.Typer(
 console = Console()
 
 
+# --- Helper functions ---
+
+
 def _get_dataset(dataset_id: str | None = None) -> Dataset:
     """Get a dataset by ID, or the latest non-superseded dataset.
 
     If dataset_id is provided, uses full=True to fetch all historical datasets.
     """
     full = dataset_id is not None
-    result = asyncio.run(download_datasets(full=full))
+    result = asyncio.run(fetch_datasets(full=full))
 
     if dataset_id:
         for ds in result.datasets:
@@ -45,10 +48,110 @@ def _get_dataset(dataset_id: str | None = None) -> Dataset:
     return current[0]
 
 
+def _format_size(size: int) -> str:
+    """Format file size in human-readable form."""
+    sizef = float(size)
+    for unit in ("B", "KB", "MB", "GB"):
+        if sizef < 1024:
+            return f"{sizef:.1f} {unit}" if unit != "B" else f"{sizef} {unit}"
+        sizef /= 1024
+    return f"{sizef:.1f} TB"
+
+
+# --- Commands ---
+
+
+@app.command("ls")
+def ls(
+    full: bool = typer.Option(
+        False,
+        "--full",
+        "-f",
+        help="Use playwright to fetch all historical datasets",
+    ),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        "-j",
+        help="Output as JSON for scripting",
+    ),
+) -> None:
+    """List available datasets from the EU ETS datahub."""
+    result = asyncio.run(fetch_datasets(full=full))
+
+    if json_output:
+        import json
+
+        print(json.dumps([ds.model_dump(mode="json") for ds in result.datasets]))
+        return
+
+    if not result.datasets and not result.errors:
+        console.print("[yellow]No datasets found.[/yellow]")
+        return
+
+    if result.datasets:
+        table = Table(title="EU ETS Datasets")
+        table.add_column("ID", style="dim", no_wrap=True)
+        table.add_column("Source", style="cyan")
+        table.add_column("Coverage", style="blue")
+        table.add_column("Published", style="magenta")
+        table.add_column("Links", justify="right")
+        table.add_column("Status")
+
+        for ds in result.datasets:
+            short_id = ds.dataset_id[:8] if len(ds.dataset_id) > 8 else ds.dataset_id
+
+            source = ds.title
+            if source.startswith(PREFIX):
+                source = source[len(PREFIX) :]
+            if source.startswith("the "):
+                source = source[4:]
+
+            coverage = f"{ds.temporal_coverage[0]}-{ds.temporal_coverage[1]}"
+            published = ds.published.strftime("%Y-%m-%d") if ds.published else "-"
+            status = (
+                "[dim]superseded[/dim]" if ds.superseded else "[green]current[/green]"
+            )
+
+            table.add_row(
+                short_id,
+                source,
+                coverage,
+                published,
+                str(len(ds.links)),
+                status,
+            )
+
+        console.print(table)
+
+    if result.errors:
+        console.print()
+        error_count = len(result.errors)
+        if error_count == 1:
+            err = result.errors[0]
+            console.print(
+                f"[red]1 error:[/red] {err.dataset_id or 'unknown'}: {err.message}"
+            )
+        else:
+            console.print(f"[red]{error_count} errors while parsing:[/red]")
+            by_message: dict[str, list[str]] = {}
+            for err in result.errors:
+                key = err.message
+                by_message.setdefault(key, []).append(err.dataset_id or "unknown")
+
+            for message, ids in by_message.items():
+                if len(ids) <= 3:
+                    console.print(f"  - {message}: {', '.join(ids)}")
+                else:
+                    console.print(
+                        f"  - {message}: {', '.join(ids[:2])} +{len(ids) - 2} more"
+                    )
+
+
 @app.command("latest")
 def latest() -> None:
     """Print the ID of the most recent dataset."""
-    result = asyncio.run(download_datasets(full=False))
+    result = asyncio.run(fetch_datasets(full=False))
     current = [ds for ds in result.datasets if not ds.superseded]
     if not current:
         raise typer.Exit(1)
@@ -70,16 +173,6 @@ def url(
     if not archive_url:
         raise typer.Exit(1)
     print(archive_url)
-
-
-def _format_size(size: int) -> str:
-    """Format file size in human-readable form."""
-    sizef = float(size)
-    for unit in ("B", "KB", "MB", "GB"):
-        if sizef < 1024:
-            return f"{sizef:.1f} {unit}" if unit != "B" else f"{sizef} {unit}"
-        sizef /= 1024
-    return f"{sizef:.1f} TB"
 
 
 @app.command("files")
@@ -166,90 +259,3 @@ def extract(
 
     for path in extracted:
         console.print(f"Extracted {path}")
-
-
-@app.command("ls")
-def ls(
-    full: bool = typer.Option(
-        False,
-        "--full",
-        "-f",
-        help="Use playwright to fetch all historical datasets",
-    ),
-    json_output: bool = typer.Option(
-        False,
-        "--json",
-        "-j",
-        help="Output as JSON for scripting",
-    ),
-) -> None:
-    """List available datasets from the EU ETS datahub."""
-    result = asyncio.run(download_datasets(full=full))
-
-    if json_output:
-        import json
-
-        print(json.dumps([ds.model_dump(mode="json") for ds in result.datasets]))
-        return
-
-    if not result.datasets and not result.errors:
-        console.print("[yellow]No datasets found.[/yellow]")
-        return
-
-    if result.datasets:
-        table = Table(title="EU ETS Datasets")
-        table.add_column("ID", style="dim", no_wrap=True)
-        table.add_column("Source", style="cyan")
-        table.add_column("Coverage", style="blue")
-        table.add_column("Published", style="magenta")
-        table.add_column("Links", justify="right")
-        table.add_column("Status")
-
-        for ds in result.datasets:
-            short_id = ds.dataset_id[:8] if len(ds.dataset_id) > 8 else ds.dataset_id
-
-            source = ds.title
-            if source.startswith(PREFIX):
-                source = source[len(PREFIX) :]
-            if source.startswith("the "):
-                source = source[4:]
-
-            coverage = f"{ds.temporal_coverage[0]}-{ds.temporal_coverage[1]}"
-            published = ds.published.strftime("%Y-%m-%d") if ds.published else "-"
-            status = (
-                "[dim]superseded[/dim]" if ds.superseded else "[green]current[/green]"
-            )
-
-            table.add_row(
-                short_id,
-                source,
-                coverage,
-                published,
-                str(len(ds.links)),
-                status,
-            )
-
-        console.print(table)
-
-    if result.errors:
-        console.print()
-        error_count = len(result.errors)
-        if error_count == 1:
-            err = result.errors[0]
-            console.print(
-                f"[red]1 error:[/red] {err.dataset_id or 'unknown'}: {err.message}"
-            )
-        else:
-            console.print(f"[red]{error_count} errors while parsing:[/red]")
-            by_message: dict[str, list[str]] = {}
-            for err in result.errors:
-                key = err.message
-                by_message.setdefault(key, []).append(err.dataset_id or "unknown")
-
-            for message, ids in by_message.items():
-                if len(ids) <= 3:
-                    console.print(f"  - {message}: {', '.join(ids)}")
-                else:
-                    console.print(
-                        f"  - {message}: {', '.join(ids[:2])} +{len(ids) - 2} more"
-                    )

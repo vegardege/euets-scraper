@@ -9,8 +9,8 @@ from euets_scraper.scraper import (
     _parse_accordion,
     _parse_accordions,
     _resolve_download_url_from_html,
-    download_datasets,
-    download_datasets_simple,
+    fetch_datasets,
+    fetch_datasets_simple,
 )
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -84,9 +84,9 @@ def test_resolve_download_url_from_html_missing_link():
 
 @pytest.mark.slow
 @pytest.mark.asyncio
-async def test_download_datasets_simple_integration():
+async def test_fetch_datasets_simple_integration():
     """Integration test for simple (httpx) scrape."""
-    result = await download_datasets_simple()
+    result = await fetch_datasets_simple()
 
     assert len(result.datasets) >= 1  # At least the current dataset
     assert len(result.errors) == 0
@@ -94,9 +94,9 @@ async def test_download_datasets_simple_integration():
 
 @pytest.mark.slow
 @pytest.mark.asyncio
-async def test_download_datasets_full_integration():
+async def test_fetch_datasets_full_integration():
     """Integration test for full (playwright) scrape."""
-    result = await download_datasets(full=True)
+    result = await fetch_datasets(full=True)
 
     assert len(result.datasets) >= 20  # Should have many datasets
     assert any(not ds.superseded for ds in result.datasets)  # At least one current
@@ -108,7 +108,7 @@ async def test_download_datasets_full_integration():
 @pytest.mark.asyncio
 async def test_dataset_url_and_files_integration():
     """Integration test for Dataset.url() and Dataset.files()."""
-    result = await download_datasets_simple()
+    result = await fetch_datasets_simple()
     current = [ds for ds in result.datasets if not ds.superseded]
     assert len(current) >= 1
 

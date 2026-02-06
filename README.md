@@ -77,12 +77,12 @@ euets extract "*.csv" --id 1087604       # extract from specific dataset
 
 ```python
 import asyncio
-from euets_scraper import download_datasets
+from euets_scraper import fetch_datasets
 
 async def main():
     # Fetch dataset metadata
-    result = await download_datasets()
-    # result = await download_datasets(full=True)  # all historical datasets
+    result = await fetch_datasets()
+    # result = await fetch_datasets(full=True)  # all historical datasets
 
     # Get the current (non-superseded) dataset
     dataset = next(ds for ds in result.datasets if not ds.superseded)
