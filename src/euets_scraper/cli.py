@@ -10,7 +10,7 @@ except ImportError:
     print("CLI requires the 'cli' extra: pip install euets-scraper[cli]")
     sys.exit(1)
 
-from euets_scraper.scraper import download_datasets
+from euets_scraper.scraper import Dataset, download_datasets
 
 # Common prefixes to strip from titles
 PREFIX = "European Union Emissions Trading System (EU ETS) data from "
@@ -20,6 +20,29 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 console = Console()
+
+
+def _get_dataset(dataset_id: str | None = None) -> Dataset:
+    """Get a dataset by ID, or the latest non-superseded dataset.
+
+    If dataset_id is provided, uses full=True to fetch all historical datasets.
+    """
+    full = dataset_id is not None
+    result = asyncio.run(download_datasets(full=full))
+
+    if dataset_id:
+        for ds in result.datasets:
+            if ds.dataset_id == dataset_id or ds.dataset_id.startswith(dataset_id):
+                return ds
+        console.print(f"[red]Dataset not found: {dataset_id}[/red]")
+        raise typer.Exit(1)
+
+    current = [ds for ds in result.datasets if not ds.superseded]
+    if not current:
+        console.print("[red]No current dataset found.[/red]")
+        raise typer.Exit(1)
+
+    return current[0]
 
 
 @app.command("latest")
@@ -33,13 +56,17 @@ def latest() -> None:
 
 
 @app.command("url")
-def url() -> None:
-    """Print the URL to the file archive of the latest dataset."""
-    result = asyncio.run(download_datasets(full=False))
-    current = [ds for ds in result.datasets if not ds.superseded]
-    if not current:
-        raise typer.Exit(1)
-    archive_url = asyncio.run(current[0].url())
+def url(
+    dataset_id: str | None = typer.Option(
+        None,
+        "--id",
+        "-i",
+        help="Dataset ID (default: latest). Prefix match supported.",
+    ),
+) -> None:
+    """Print the URL to the file archive of a dataset."""
+    dataset = _get_dataset(dataset_id)
+    archive_url = asyncio.run(dataset.url())
     if not archive_url:
         raise typer.Exit(1)
     print(archive_url)
@@ -57,6 +84,12 @@ def _format_size(size: int) -> str:
 
 @app.command("files")
 def files(
+    dataset_id: str | None = typer.Option(
+        None,
+        "--id",
+        "-i",
+        help="Dataset ID (default: latest). Prefix match supported.",
+    ),
     json_output: bool = typer.Option(
         False,
         "--json",
@@ -64,13 +97,9 @@ def files(
         help="Output as JSON for scripting",
     ),
 ) -> None:
-    """Print a list of files in the archive of the latest dataset."""
-    result = asyncio.run(download_datasets(full=False))
-    current = [ds for ds in result.datasets if not ds.superseded]
-    if not current:
-        raise typer.Exit(1)
-
-    archive_files = asyncio.run(current[0].files())
+    """Print a list of files in the archive of a dataset."""
+    dataset = _get_dataset(dataset_id)
+    archive_files = asyncio.run(dataset.files())
     if not archive_files:
         raise typer.Exit(1)
 
@@ -97,15 +126,15 @@ def download(
         ".",
         help="Destination path (local or cloud like s3://bucket/file.zip)",
     ),
+    dataset_id: str | None = typer.Option(
+        None,
+        "--id",
+        "-i",
+        help="Dataset ID (default: latest). Prefix match supported.",
+    ),
 ) -> None:
-    """Download the archive of the latest dataset to a file."""
-    result = asyncio.run(download_datasets(full=False))
-    current = [ds for ds in result.datasets if not ds.superseded]
-    if not current:
-        console.print("[red]No current dataset found.[/red]")
-        raise typer.Exit(1)
-
-    dataset = current[0]
+    """Download the archive of a dataset to a file."""
+    dataset = _get_dataset(dataset_id)
     final_path = asyncio.run(dataset.download(path))
     console.print(f"Downloaded to {final_path}")
 
@@ -120,15 +149,15 @@ def extract(
         ".",
         help="Output directory (local or cloud like s3://bucket/data/)",
     ),
+    dataset_id: str | None = typer.Option(
+        None,
+        "--id",
+        "-i",
+        help="Dataset ID (default: latest). Prefix match supported.",
+    ),
 ) -> None:
-    """Extract files matching a pattern from the latest dataset's archive."""
-    result = asyncio.run(download_datasets(full=False))
-    current = [ds for ds in result.datasets if not ds.superseded]
-    if not current:
-        console.print("[red]No current dataset found.[/red]")
-        raise typer.Exit(1)
-
-    dataset = current[0]
+    """Extract files matching a pattern from a dataset's archive."""
+    dataset = _get_dataset(dataset_id)
     extracted = asyncio.run(dataset.extract(pattern, output_dir))
 
     if not extracted:

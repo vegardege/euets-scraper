@@ -2,7 +2,17 @@
 
 [![CI](https://github.com/vegardege/euets-scraper/actions/workflows/ci.yml/badge.svg)](https://github.com/vegardege/euets-scraper/actions/workflows/ci.yml)
 
-Scrape carbon quotas from EU ETS.
+A Python library and CLI to download data files from the [European Union Emissions Trading System (EU ETS)](https://www.eea.europa.eu/en/datahub/datahubitem-view/98f04097-26de-4fca-86c4-63834818c0c0) datahub.
+
+## Features
+
+- **Discover datasets** — List current and historical datasets with metadata
+- **Download archives** — Get the full data archive as a zip file
+- **Extract specific files** — Pull only what you need using glob patterns
+- **Cloud storage support** — Download directly to S3, GCS, or Azure
+- **CLI and Python API** — Use from the command line or integrate into your pipelines
+
+The EU ETS dataset includes verified emissions, allocated allowances, and surrendered units for installations and aircraft operators covered by the EU ETS.
 
 ## Installation
 
@@ -43,21 +53,24 @@ euets ls
 euets ls --full    # include historical (requires playwright)
 euets ls --json    # JSON output for scripting
 
-# Get latest dataset info
-euets latest       # print latest dataset ID
-euets url          # print archive download URL of latest dataset
-euets files        # list files in archive
-euets files --json # JSON output
+# Get dataset info (latest by default, or specify --id)
+euets latest              # print latest dataset ID
+euets url                 # print archive download URL
+euets url --id 1087604    # URL for specific dataset (prefix match supported)
+euets files               # list files in archive
+euets files --json        # JSON output
 
 # Download archive
 euets download                       # download to ./[dataset_id].zip
 euets download ./data/               # download to ./data/[dataset_id].zip
 euets download s3://bucket/data.zip  # download to S3 (requires [s3] extra)
+euets download --id 1087604          # download specific dataset
 
 # Extract specific files
 euets extract "*.csv"                    # extract CSVs to current directory
 euets extract "Allowances*" ./data/      # extract matching files to ./data/
 euets extract "*.csv" s3://bucket/data/  # extract to S3 (requires [s3] extra)
+euets extract "*.csv" --id 1087604       # extract from specific dataset
 ```
 
 ## Usage
