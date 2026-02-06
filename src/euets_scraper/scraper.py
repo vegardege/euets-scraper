@@ -12,10 +12,14 @@ if TYPE_CHECKING:
 
 T = TypeVar("T")
 
+# EU ETS DataHub root page
 ROOT_URL = (
     "https://www.eea.europa.eu/en/datahub/datahubitem-view/"
     "98f04097-26de-4fca-86c4-63834818c0c0"
 )
+
+# Default timeout for HTTP requests (seconds)
+DEFAULT_TIMEOUT = 30.0
 
 
 class Link(BaseModel):
@@ -41,6 +45,18 @@ class Dataset(BaseModel):
     links: list[Link]
 
     _cached_archive_url: str | None = PrivateAttr(default=None)
+    _cached_archive_bytes: bytes | None = PrivateAttr(default=None)
+
+    async def _get_archive_bytes(self) -> bytes:
+        """Get archive bytes, fetching and caching if needed."""
+        if self._cached_archive_bytes is None:
+            from euets_scraper.archive import fetch_archive
+
+            url = await self.url()
+            if not url:
+                raise ValueError("No download URL available for this dataset")
+            self._cached_archive_bytes = await fetch_archive(url)
+        return self._cached_archive_bytes
 
     async def url(self) -> str | None:
         """Get a direct URL to the zip archive of files for this dataset.
@@ -56,11 +72,10 @@ class Dataset(BaseModel):
 
     async def files(self) -> list["ArchiveFile"]:
         """Get a list of all files in the 'Direct download' archive."""
-        from euets_scraper.archive import list_archive_files
+        from euets_scraper.archive import list_files_from_bytes
 
-        if url := await self.url():
-            return await list_archive_files(url)
-        return []
+        data = await self._get_archive_bytes()
+        return list_files_from_bytes(data)
 
     async def download(self, path: str | Path = ".") -> str:
         """Download the archive to a local or cloud path.
@@ -74,18 +89,16 @@ class Dataset(BaseModel):
 
         For cloud paths, requires the [cloud] extra.
         """
-        from euets_scraper.archive import download_archive
+        from euets_scraper.archive import write_bytes_to_path
 
-        url = await self.url()
-        if not url:
-            raise ValueError("No download URL available for this dataset")
+        data = await self._get_archive_bytes()
 
         # If local directory, append filename based on dataset ID
         path_obj = Path(path)
         if path_obj.is_dir():
             path = path_obj / f"{self.dataset_id}.zip"
 
-        await download_archive(url, path)
+        write_bytes_to_path(data, path)
         return str(path)
 
     async def extract(self, pattern: str, output_dir: str | Path = ".") -> list[str]:
@@ -100,13 +113,10 @@ class Dataset(BaseModel):
 
         For cloud paths, requires the [cloud] extra.
         """
-        from euets_scraper.archive import extract_files
+        from euets_scraper.archive import extract_files_from_bytes
 
-        url = await self.url()
-        if not url:
-            raise ValueError("No download URL available for this dataset")
-
-        return await extract_files(url, pattern, output_dir)
+        data = await self._get_archive_bytes()
+        return extract_files_from_bytes(data, pattern, output_dir)
 
 
 class ParseError(BaseModel):
@@ -240,7 +250,7 @@ async def fetch_datasets_simple(url: str = ROOT_URL) -> ETSResult:
     Returns:
         An ETSResult containing successfully parsed datasets and any errors
     """
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
         response = await client.get(url)
         response.raise_for_status()
 
@@ -354,7 +364,7 @@ async def resolve_download_url(download_page: str | AnyUrl) -> str:
     Raises:
         ValueError: If the download link cannot be found on the page
     """
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
         response = await client.get(str(download_page))
         response.raise_for_status()
 

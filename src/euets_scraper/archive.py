@@ -11,6 +11,9 @@ from typing import Any
 import httpx
 from pydantic import AnyUrl, BaseModel
 
+# Default timeout for HTTP requests (seconds)
+DEFAULT_TIMEOUT = 120.0
+
 
 class ArchiveFile(BaseModel):
     """A file contained in a dataset archive."""
@@ -55,16 +58,17 @@ def _get_file_type(filename: str) -> str:
     return ext if ext != filename.lower() else ""
 
 
-async def list_archive_files(url: str | AnyUrl) -> list[ArchiveFile]:
-    """List the files contained in a remote zip archive.
-
-    Downloads the archive to memory and reads its contents.
-    """
-    async with httpx.AsyncClient() as client:
+async def fetch_archive(url: str | AnyUrl) -> bytes:
+    """Fetch a remote zip archive and return its contents as bytes."""
+    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
         resp = await client.get(str(url))
         resp.raise_for_status()
+    return resp.content
 
-    with zipfile.ZipFile(io.BytesIO(resp.content)) as z:
+
+def list_files_from_bytes(data: bytes) -> list[ArchiveFile]:
+    """List the files contained in zip archive bytes."""
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
         return [
             ArchiveFile(
                 name=info.filename.rsplit("/", 1)[-1],
@@ -76,48 +80,22 @@ async def list_archive_files(url: str | AnyUrl) -> list[ArchiveFile]:
         ]
 
 
-async def download_archive(url: str | AnyUrl, path: str | Path) -> None:
-    """Download a remote zip archive to a local or cloud path.
-
-    Args:
-        url: URL of the zip archive
-        path: Destination path (local or cloud like s3://bucket/file.zip)
-
-    For cloud paths, requires the [cloud] extra.
-    """
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(str(url))
-        resp.raise_for_status()
-
+def write_bytes_to_path(data: bytes, path: str | Path) -> None:
+    """Write bytes to a local or cloud path."""
     with _open_for_write(path) as f:
-        f.write(resp.content)
+        f.write(data)
 
 
-async def extract_files(
-    url: str | AnyUrl,
+def extract_files_from_bytes(
+    data: bytes,
     pattern: str,
     output_dir: str | Path = ".",
 ) -> list[str]:
-    """Extract files matching a pattern from a remote zip archive.
-
-    Args:
-        url: URL of the zip archive
-        pattern: Glob pattern to match filenames (e.g., "*.csv", "Allowances*")
-        output_dir: Directory to extract to (local or cloud like s3://bucket/data/)
-
-    Returns:
-        List of paths where files were extracted.
-
-    For cloud paths, requires the [cloud] extra.
-    """
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(str(url))
-        resp.raise_for_status()
-
+    """Extract files matching a pattern from zip archive bytes."""
     extracted: list[str] = []
     output_str = str(output_dir).rstrip("/")
 
-    with zipfile.ZipFile(io.BytesIO(resp.content)) as z:
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
         for info in z.infolist():
             if info.is_dir():
                 continue
@@ -140,3 +118,51 @@ async def extract_files(
             extracted.append(out_path)
 
     return extracted
+
+
+#
+# Public convenience functions (fetch and process in one call)
+#
+
+
+async def list_archive_files(url: str | AnyUrl) -> list[ArchiveFile]:
+    """List the files contained in a remote zip archive.
+
+    Downloads the archive to memory and reads its contents.
+    """
+    data = await fetch_archive(url)
+    return list_files_from_bytes(data)
+
+
+async def download_archive(url: str | AnyUrl, path: str | Path) -> None:
+    """Download a remote zip archive to a local or cloud path.
+
+    Args:
+        url: URL of the zip archive
+        path: Destination path (local or cloud like s3://bucket/file.zip)
+
+    For cloud paths, requires the [cloud] extra.
+    """
+    data = await fetch_archive(url)
+    write_bytes_to_path(data, path)
+
+
+async def extract_files(
+    url: str | AnyUrl,
+    pattern: str,
+    output_dir: str | Path = ".",
+) -> list[str]:
+    """Extract files matching a pattern from a remote zip archive.
+
+    Args:
+        url: URL of the zip archive
+        pattern: Glob pattern to match filenames (e.g., "*.csv", "Allowances*")
+        output_dir: Directory to extract to (local or cloud like s3://bucket/data/)
+
+    Returns:
+        List of paths where files were extracted.
+
+    For cloud paths, requires the [cloud] extra.
+    """
+    data = await fetch_archive(url)
+    return extract_files_from_bytes(data, pattern, output_dir)
