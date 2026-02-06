@@ -554,12 +554,12 @@ cli = [
 cloud = [
     { name = "fsspec" },
 ]
-full = [
-    { name = "playwright" },
-]
 gcs = [
     { name = "fsspec" },
     { name = "gcsfs" },
+]
+playwright = [
+    { name = "playwright" },
 ]
 s3 = [
     { name = "fsspec" },
@@ -587,13 +587,13 @@ requires-dist = [
     { name = "fsspec", marker = "extra == 's3'" },
     { name = "gcsfs", marker = "extra == 'gcs'" },
     { name = "httpx", specifier = ">=0.28.1" },
-    { name = "playwright", marker = "extra == 'full'" },
+    { name = "playwright", marker = "extra == 'playwright'" },
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "rich", marker = "extra == 'cli'" },
     { name = "s3fs", marker = "extra == 's3'" },
     { name = "typer", marker = "extra == 'cli'" },
 ]
-provides-extras = ["full", "cli", "cloud", "s3", "gcs", "azure"]
+provides-extras = ["cli", "playwright", "cloud", "s3", "gcs", "azure"]
 
 [package.metadata.requires-dev]
 dev = [

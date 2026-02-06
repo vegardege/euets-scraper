@@ -20,12 +20,12 @@ The EU ETS dataset includes verified emissions, allocated allowances, and surren
 pip install euets-scraper@git+https://github.com/vegardege/euets
 ```
 
-### With full historical data support
+### With historical data support
 
-To scrape all historical datasets (requires `playwright`):
+To scrape all historical datasets (requires playwright):
 
 ```bash
-pip install euets-scraper[full]@git+https://github.com/vegardege/euets
+pip install euets-scraper[playwright]@git+https://github.com/vegardege/euets
 playwright install chromium
 ```
 
@@ -50,7 +50,7 @@ pip install euets-scraper[azure]@git+https://github.com/vegardege/euets
 ```bash
 # List all datasets
 euets ls
-euets ls --full    # include historical (requires playwright)
+euets ls --full    # include historical (requires [playwright] extra)
 euets ls --json    # JSON output for scripting
 
 # Get dataset info (latest by default, or specify --id)
