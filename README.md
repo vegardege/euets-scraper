@@ -17,7 +17,7 @@ The EU ETS dataset includes verified emissions, allocated allowances, and surren
 ## Installation
 
 ```bash
-pip install euets-scraper@git+https://github.com/vegardege/euets
+pip install euets-scraper@git+https://github.com/vegardege/euets-scraper
 ```
 
 ### With historical data support
@@ -25,14 +25,14 @@ pip install euets-scraper@git+https://github.com/vegardege/euets
 To scrape all historical datasets (requires playwright):
 
 ```bash
-pip install euets-scraper[playwright]@git+https://github.com/vegardege/euets
+pip install "euets-scraper[playwright] @ git+https://github.com/vegardege/euets-scraper"
 playwright install chromium
 ```
 
 ### With CLI
 
 ```bash
-pip install euets-scraper[cli]@git+https://github.com/vegardege/euets
+pip install "euets-scraper[cli] @ git+https://github.com/vegardege/euets-scraper"
 ```
 
 ### With cloud storage support
@@ -40,9 +40,10 @@ pip install euets-scraper[cli]@git+https://github.com/vegardege/euets
 To download directly to S3, GCS, or Azure:
 
 ```bash
-pip install euets-scraper[s3]@git+https://github.com/vegardege/euets
-pip install euets-scraper[gcs]@git+https://github.com/vegardege/euets
-pip install euets-scraper[azure]@git+https://github.com/vegardege/euets
+pip install "euets-scraper[s3] @ git+https://github.com/vegardege/euets-scraper"
+pip install "euets-scraper[gcs] @ git+https://github.com/vegardege/euets-scraper"
+pip install "euets-scraper[azure] @ git+https://github.com/vegardege/euets-scraper"
+# Or use [cloud] for generic fsspec support
 ```
 
 ## CLI
@@ -136,8 +137,8 @@ from euets_scraper import Dataset, ArchiveFile, ETSResult, ParseError, Link
 ## Development
 
 ```bash
-git clone https://github.com/vegardege/euets
-cd euets
+git clone https://github.com/vegardege/euets-scraper
+cd euets-scraper
 uv sync
 uv run playwright install chromium  # needed for integration tests
 ```

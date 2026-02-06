@@ -1,7 +1,7 @@
 [project]
 name = "euets-scraper"
 version = "0.1.0"
-description = "Scrape carbon quotas from EU ETS"
+description = "CLI and API to retrieve data from EU ETS' Datahub"
 readme = "README.md"
 authors = [
     { name = "Vegard Egeland", email = "vegardegeland@gmail.com" }
