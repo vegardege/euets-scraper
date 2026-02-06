@@ -1,5 +1,6 @@
 """Archive operations for EU ETS datasets."""
 
+import fnmatch
 import io
 import zipfile
 from collections.abc import Iterator
@@ -90,3 +91,52 @@ async def download_archive(url: str | AnyUrl, path: str | Path) -> None:
 
     with _open_for_write(path) as f:
         f.write(resp.content)
+
+
+async def extract_files(
+    url: str | AnyUrl,
+    pattern: str,
+    output_dir: str | Path = ".",
+) -> list[str]:
+    """Extract files matching a pattern from a remote zip archive.
+
+    Args:
+        url: URL of the zip archive
+        pattern: Glob pattern to match filenames (e.g., "*.csv", "Allowances*")
+        output_dir: Directory to extract to (local or cloud like s3://bucket/data/)
+
+    Returns:
+        List of paths where files were extracted.
+
+    For cloud paths, requires the [cloud] extra.
+    """
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(str(url))
+        resp.raise_for_status()
+
+    extracted: list[str] = []
+    output_str = str(output_dir).rstrip("/")
+
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as z:
+        for info in z.infolist():
+            if info.is_dir():
+                continue
+
+            # Match against the basename only
+            basename = info.filename.rsplit("/", 1)[-1]
+            if not fnmatch.fnmatch(basename, pattern):
+                continue
+
+            # Determine output path
+            if _is_cloud_path(output_str):
+                out_path = f"{output_str}/{basename}"
+            else:
+                Path(output_str).mkdir(parents=True, exist_ok=True)
+                out_path = str(Path(output_str) / basename)
+
+            with _open_for_write(out_path) as f:
+                f.write(z.read(info.filename))
+
+            extracted.append(out_path)
+
+    return extracted

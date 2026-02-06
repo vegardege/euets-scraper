@@ -110,6 +110,35 @@ def download(
     console.print(f"Downloaded to {final_path}")
 
 
+@app.command("extract")
+def extract(
+    pattern: str = typer.Argument(
+        ...,
+        help="Glob pattern to match filenames (e.g., '*.csv', 'Allowances*')",
+    ),
+    output_dir: str = typer.Argument(
+        ".",
+        help="Output directory (local or cloud like s3://bucket/data/)",
+    ),
+) -> None:
+    """Extract files matching a pattern from the latest dataset's archive."""
+    result = asyncio.run(download_datasets(full=False))
+    current = [ds for ds in result.datasets if not ds.superseded]
+    if not current:
+        console.print("[red]No current dataset found.[/red]")
+        raise typer.Exit(1)
+
+    dataset = current[0]
+    extracted = asyncio.run(dataset.extract(pattern, output_dir))
+
+    if not extracted:
+        console.print(f"[yellow]No files matched pattern: {pattern}[/yellow]")
+        raise typer.Exit(1)
+
+    for path in extracted:
+        console.print(f"Extracted {path}")
+
+
 @app.command("ls")
 def ls(
     full: bool = typer.Option(

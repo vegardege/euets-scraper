@@ -88,6 +88,26 @@ class Dataset(BaseModel):
         await download_archive(url, path)
         return str(path)
 
+    async def extract(self, pattern: str, output_dir: str | Path = ".") -> list[str]:
+        """Extract files matching a pattern from the archive.
+
+        Args:
+            pattern: Glob pattern to match filenames (e.g., "*.csv", "Allowances*")
+            output_dir: Directory to extract to (local or cloud like s3://bucket/data/)
+
+        Returns:
+            List of paths where files were extracted.
+
+        For cloud paths, requires the [cloud] extra.
+        """
+        from euets_scraper.archive import extract_files
+
+        url = await self.url()
+        if not url:
+            raise ValueError("No download URL available for this dataset")
+
+        return await extract_files(url, pattern, output_dir)
+
 
 class ParseError(BaseModel):
     """An error encountered while parsing a dataset."""

@@ -1,4 +1,9 @@
-from euets_scraper.archive import ArchiveFile, download_archive, list_archive_files
+from euets_scraper.archive import (
+    ArchiveFile,
+    download_archive,
+    extract_files,
+    list_archive_files,
+)
 from euets_scraper.scraper import (
     Dataset,
     ETSResult,
@@ -20,6 +25,7 @@ __all__ = [
     "download_datasets",
     "download_datasets_full",
     "download_datasets_simple",
+    "extract_files",
     "list_archive_files",
     "resolve_download_url",
 ]

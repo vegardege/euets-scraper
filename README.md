@@ -53,6 +53,11 @@ euets files --json # JSON output
 euets download                       # download to ./[dataset_id].zip
 euets download ./data/               # download to ./data/[dataset_id].zip
 euets download s3://bucket/data.zip  # download to S3 (requires [s3] extra)
+
+# Extract specific files
+euets extract "*.csv"                    # extract CSVs to current directory
+euets extract "Allowances*" ./data/      # extract matching files to ./data/
+euets extract "*.csv" s3://bucket/data/  # extract to S3 (requires [s3] extra)
 ```
 
 ## Usage
@@ -75,7 +80,10 @@ async def main():
 
     # Download the archive
     path = await dataset.download("./data/")  # -> ./data/[dataset_id].zip
-    path = await dataset.download("s3://bucket/data.zip")  # cloud storage
+
+    # Or extract specific files
+    paths = await dataset.extract("*.csv", "./data/")  # extract CSVs
+    paths = await dataset.extract("*.csv", "s3://bucket/data/")  # to cloud
 
     # Or get the direct URL for custom handling
     url = await dataset.url()
@@ -104,6 +112,7 @@ from euets_scraper import Dataset, ArchiveFile, ETSResult, ParseError, Link
 #   async url() -> str | None
 #   async files() -> list[ArchiveFile]
 #   async download(path) -> str
+#   async extract(pattern, output_dir) -> list[str]
 
 # ArchiveFile: a file in the dataset archive
 #   name: str
