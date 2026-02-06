@@ -8,9 +8,9 @@ authors = [
 ]
 requires-python = ">=3.11"
 dependencies = [
-    "beautifulsoup4>=4.14.3",
-    "httpx>=0.28.1",
-    "pydantic>=2.12.5",
+    "beautifulsoup4>=4.9",
+    "httpx>=0.24",
+    "pydantic>=2.0",
 ]
 
 [project.optional-dependencies]

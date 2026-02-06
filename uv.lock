@@ -580,15 +580,15 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "adlfs", marker = "extra == 'azure'" },
-    { name = "beautifulsoup4", specifier = ">=4.14.3" },
+    { name = "beautifulsoup4", specifier = ">=4.9" },
     { name = "fsspec", marker = "extra == 'azure'" },
     { name = "fsspec", marker = "extra == 'cloud'" },
     { name = "fsspec", marker = "extra == 'gcs'" },
     { name = "fsspec", marker = "extra == 's3'" },
     { name = "gcsfs", marker = "extra == 'gcs'" },
-    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "httpx", specifier = ">=0.24" },
     { name = "playwright", marker = "extra == 'playwright'" },
-    { name = "pydantic", specifier = ">=2.12.5" },
+    { name = "pydantic", specifier = ">=2.0" },
     { name = "rich", marker = "extra == 'cli'" },
     { name = "s3fs", marker = "extra == 's3'" },
     { name = "typer", marker = "extra == 'cli'" },

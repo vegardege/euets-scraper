@@ -4,15 +4,11 @@
 
 A Python library and CLI to download data files from the [European Union Emissions Trading System (EU ETS)](https://www.eea.europa.eu/en/datahub/datahubitem-view/98f04097-26de-4fca-86c4-63834818c0c0) datahub.
 
-## Features
-
-- **Discover datasets** — List current and historical datasets with metadata
-- **Download archives** — Get the full data archive as a zip file
-- **Extract specific files** — Pull only what you need using glob patterns
-- **Cloud storage support** — Download directly to S3, GCS, or Azure
-- **CLI and Python API** — Use from the command line or integrate into your pipelines
-
 The EU ETS dataset includes verified emissions, allocated allowances, and surrendered units for installations and aircraft operators covered by the EU ETS.
+
+This library enables you to explore and monitor the datasets in the datahub, and download whole or parts of the associated files to the local file system or a cloud provider (S3, GCS, and Azure out of the box).
+
+It can be used as a Python library or a cli tool.
 
 ## Installation
 
@@ -29,7 +25,7 @@ pip install "euets-scraper[playwright] @ git+https://github.com/vegardege/euets-
 playwright install chromium
 ```
 
-### With CLI
+### With CLI tool
 
 ```bash
 pip install "euets-scraper[cli] @ git+https://github.com/vegardege/euets-scraper"
@@ -43,7 +39,7 @@ To download directly to S3, GCS, or Azure:
 pip install "euets-scraper[s3] @ git+https://github.com/vegardege/euets-scraper"
 pip install "euets-scraper[gcs] @ git+https://github.com/vegardege/euets-scraper"
 pip install "euets-scraper[azure] @ git+https://github.com/vegardege/euets-scraper"
-# Or use [cloud] for generic fsspec support
+# Or use [cloud] for generic fsspec support and provide your own cloud specific driver
 ```
 
 ## CLI
