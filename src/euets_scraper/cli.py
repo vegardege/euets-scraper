@@ -91,6 +91,25 @@ def files(
     console.print(table)
 
 
+@app.command("download")
+def download(
+    path: str = typer.Argument(
+        ".",
+        help="Destination path (local or cloud like s3://bucket/file.zip)",
+    ),
+) -> None:
+    """Download the archive of the latest dataset to a file."""
+    result = asyncio.run(download_datasets(full=False))
+    current = [ds for ds in result.datasets if not ds.superseded]
+    if not current:
+        console.print("[red]No current dataset found.[/red]")
+        raise typer.Exit(1)
+
+    dataset = current[0]
+    final_path = asyncio.run(dataset.download(path))
+    console.print(f"Downloaded to {final_path}")
+
+
 @app.command("ls")
 def ls(
     full: bool = typer.Option(

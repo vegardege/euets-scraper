@@ -25,20 +25,34 @@ playwright install chromium
 pip install euets-scraper[cli]@git+https://github.com/vegardege/euets
 ```
 
+### With cloud storage support
+
+To download directly to S3, GCS, or Azure:
+
+```bash
+pip install euets-scraper[s3]@git+https://github.com/vegardege/euets
+pip install euets-scraper[gcs]@git+https://github.com/vegardege/euets
+pip install euets-scraper[azure]@git+https://github.com/vegardege/euets
+```
+
 ## CLI
 
 ```bash
-# List all datasets in a table
+# List all datasets
 euets ls
+euets ls --full    # include historical (requires playwright)
+euets ls --json    # JSON output for scripting
 
-# Include historical datasets (requires playwright)
-euets ls --full
+# Get latest dataset info
+euets latest       # print latest dataset ID
+euets url          # print archive download URL of latest dataset
+euets files        # list files in archive
+euets files --json # JSON output
 
-# JSON output for scripting
-euets ls --json | jq '.[0].dataset_id'
-
-# Get the ID of the most recent dataset
-euets latest
+# Download archive
+euets download                       # download to ./[dataset_id].zip
+euets download ./data/               # download to ./data/[dataset_id].zip
+euets download s3://bucket/data.zip  # download to S3 (requires [s3] extra)
 ```
 
 ## Usage
@@ -48,18 +62,23 @@ import asyncio
 from euets_scraper import download_datasets
 
 async def main():
-    # Simple scrape (httpx) - gets current + one superseded dataset
+    # Fetch dataset metadata
     result = await download_datasets()
+    # result = await download_datasets(full=True)  # all historical datasets
 
-    # Full scrape (playwright) - gets all historical datasets
-    # result = await download_datasets(full=True)
+    # Get the current (non-superseded) dataset
+    dataset = next(ds for ds in result.datasets if not ds.superseded)
 
-    for dataset in result.datasets:
-        print(f"{dataset.title} ({dataset.temporal_coverage[0]}-{dataset.temporal_coverage[1]})")
+    # List files in the archive
+    for f in await dataset.files():
+        print(f"{f.name} ({f.file_type}, {f.size} bytes)")
 
-    # Check for parsing errors
-    for error in result.errors:
-        print(f"Failed to parse {error.dataset_id}: {error.message}")
+    # Download the archive
+    path = await dataset.download("./data/")  # -> ./data/[dataset_id].zip
+    path = await dataset.download("s3://bucket/data.zip")  # cloud storage
+
+    # Or get the direct URL for custom handling
+    url = await dataset.url()
 
 asyncio.run(main())
 ```
@@ -67,13 +86,13 @@ asyncio.run(main())
 ### Data structures
 
 ```python
-from euets_scraper import Dataset, ETSResult, ParseError, Link
+from euets_scraper import Dataset, ArchiveFile, ETSResult, ParseError, Link
 
-# ETSResult contains:
-#   datasets: list[Dataset]  - successfully parsed datasets
-#   errors: list[ParseError] - parsing failures with dataset_id and message
+# ETSResult: result of fetching datasets
+#   datasets: list[Dataset]
+#   errors: list[ParseError]
 
-# Dataset contains:
+# Dataset: a dataset from the datahub
 #   dataset_id: str
 #   title: str
 #   format: str
@@ -82,6 +101,14 @@ from euets_scraper import Dataset, ETSResult, ParseError, Link
 #   temporal_coverage: tuple[int, int]
 #   factsheet: AnyUrl
 #   links: list[Link]
+#   async url() -> str | None
+#   async files() -> list[ArchiveFile]
+#   async download(path) -> str
+
+# ArchiveFile: a file in the dataset archive
+#   name: str
+#   size: int
+#   file_type: str
 ```
 
 ## Development

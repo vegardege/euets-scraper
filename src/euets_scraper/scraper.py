@@ -1,12 +1,14 @@
-import io
-import zipfile
 from collections.abc import Callable
 from datetime import datetime
-from typing import TypeVar
+from pathlib import Path
+from typing import TYPE_CHECKING, TypeVar
 
 import httpx
 from bs4 import BeautifulSoup, Tag
 from pydantic import AnyUrl, BaseModel, PrivateAttr
+
+if TYPE_CHECKING:
+    from euets_scraper.archive import ArchiveFile
 
 T = TypeVar("T")
 
@@ -21,14 +23,6 @@ class Link(BaseModel):
 
     label: str
     url: AnyUrl
-
-
-class ArchiveFile(BaseModel):
-    """A file contained in a dataset archive."""
-
-    name: str
-    size: int
-    file_type: str
 
 
 class Dataset(BaseModel):
@@ -60,11 +54,39 @@ class Dataset(BaseModel):
                     self._cached_archive_url = await resolve_download_url(link.url)
         return self._cached_archive_url
 
-    async def files(self) -> list[ArchiveFile]:
+    async def files(self) -> list["ArchiveFile"]:
         """Get a list of all files in the 'Direct download' archive."""
+        from euets_scraper.archive import list_archive_files
+
         if url := await self.url():
             return await list_archive_files(url)
         return []
+
+    async def download(self, path: str | Path = ".") -> str:
+        """Download the archive to a local or cloud path.
+
+        Args:
+            path: Destination path (local or cloud like s3://bucket/file.zip).
+                  If a directory, uses {dataset_id}.zip as filename.
+
+        Returns:
+            The final path where the file was saved.
+
+        For cloud paths, requires the [cloud] extra.
+        """
+        from euets_scraper.archive import download_archive
+
+        url = await self.url()
+        if not url:
+            raise ValueError("No download URL available for this dataset")
+
+        # If local directory, append filename based on dataset ID
+        path_obj = Path(path)
+        if path_obj.is_dir():
+            path = path_obj / f"{self.dataset_id}.zip"
+
+        await download_archive(url, path)
+        return str(path)
 
 
 class ParseError(BaseModel):
@@ -317,30 +339,3 @@ async def resolve_download_url(download_page: str | AnyUrl) -> str:
         response.raise_for_status()
 
     return _resolve_download_url_from_html(response.text)
-
-
-def _get_file_type(filename: str) -> str:
-    """Get file type from extension."""
-    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-    return ext if ext != filename.lower() else ""
-
-
-async def list_archive_files(url: str | AnyUrl) -> list[ArchiveFile]:
-    """List the files contained in a remote zip archive.
-
-    Downloads the archive to memory and reads its contents.
-    """
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(str(url))
-        resp.raise_for_status()
-
-    with zipfile.ZipFile(io.BytesIO(resp.content)) as z:
-        return [
-            ArchiveFile(
-                name=info.filename.rsplit("/", 1)[-1],
-                size=info.file_size,
-                file_type=_get_file_type(info.filename),
-            )
-            for info in z.infolist()
-            if not info.is_dir()
-        ]
