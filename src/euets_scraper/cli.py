@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 try:
     import typer
@@ -17,10 +18,37 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
-# stdout console for data output (tables)
 console = Console()
-# stderr console for status messages and errors
-err = Console(stderr=True)
+err_console = Console(stderr=True)
+
+
+class State:
+    """Global state for CLI options."""
+
+    quiet: bool = False
+
+
+state = State()
+
+
+@app.callback()
+def main(
+    quiet: bool = typer.Option(
+        False,
+        "--quiet",
+        "-q",
+        help="Suppress status messages (errors still shown)",
+    ),
+) -> None:
+    """EU ETS Scraper - fetch carbon quota data from the EU ETS datahub."""
+    state.quiet = quiet
+
+
+def status(msg: str) -> None:
+    """Print status message to stderr (respects --quiet)."""
+    if not state.quiet:
+        err_console.print(msg, style="dim")
+
 
 #
 # Helper functions
@@ -39,12 +67,12 @@ def _get_dataset(dataset_id: str | None = None) -> Dataset:
         for ds in result.datasets:
             if ds.dataset_id == dataset_id or ds.dataset_id.startswith(dataset_id):
                 return ds
-        err.print(f"[red]Dataset not found: {dataset_id}[/red]")
+        err_console.print(f"[red]Dataset not found: {dataset_id}[/red]")
         raise typer.Exit(1)
 
     current = [ds for ds in result.datasets if not ds.superseded]
     if not current:
-        err.print("[red]No current dataset found.[/red]")
+        err_console.print("[red]No current dataset found.[/red]")
         raise typer.Exit(1)
 
     return current[0]
@@ -84,13 +112,11 @@ def ls(
     result = asyncio.run(fetch_datasets(full=full))
 
     if json_output:
-        import json
-
         print(json.dumps([ds.model_dump(mode="json") for ds in result.datasets]))
         return
 
     if not result.datasets and not result.errors:
-        err.print("[yellow]No datasets found.[/yellow]")
+        err_console.print("[yellow]No datasets found.[/yellow]")
         return
 
     if result.datasets:
@@ -114,7 +140,7 @@ def ls(
 
             coverage = f"{ds.temporal_coverage[0]}-{ds.temporal_coverage[1]}"
             published = ds.published.strftime("%Y-%m-%d") if ds.published else "-"
-            status = (
+            ds_status = (
                 "[dim]superseded[/dim]" if ds.superseded else "[green]current[/green]"
             )
 
@@ -124,21 +150,21 @@ def ls(
                 coverage,
                 published,
                 str(len(ds.links)),
-                status,
+                ds_status,
             )
 
         console.print(table)
 
     if result.errors:
-        err.print()
+        err_console.print()
         error_count = len(result.errors)
         if error_count == 1:
             parse_err = result.errors[0]
-            err.print(
+            err_console.print(
                 f"[red]1 error:[/red] {parse_err.dataset_id or 'unknown'}: {parse_err.message}"
             )
         else:
-            err.print(f"[red]{error_count} errors while parsing:[/red]")
+            err_console.print(f"[red]{error_count} errors while parsing:[/red]")
             by_message: dict[str, list[str]] = {}
             for parse_err in result.errors:
                 key = parse_err.message
@@ -146,9 +172,9 @@ def ls(
 
             for message, ids in by_message.items():
                 if len(ids) <= 3:
-                    err.print(f"  - {message}: {', '.join(ids)}")
+                    err_console.print(f"  - {message}: {', '.join(ids)}")
                 else:
-                    err.print(
+                    err_console.print(
                         f"  - {message}: {', '.join(ids[:2])} +{len(ids) - 2} more"
                     )
 
@@ -191,7 +217,6 @@ def check(
 
     # Newer dataset exists - print its ID
     print(latest_id)
-    raise typer.Exit(0)
 
 
 @app.command("url")
@@ -233,8 +258,6 @@ def files(
         raise typer.Exit(1)
 
     if json_output:
-        import json
-
         print(json.dumps([f.model_dump() for f in archive_files]))
         return
 
@@ -264,7 +287,7 @@ def download(
 ) -> None:
     """Download the archive of a dataset to a file."""
     dataset = _get_dataset(dataset_id)
-    err.print(f"Downloading {dataset.dataset_id}...", style="dim")
+    status(f"Downloading {dataset.dataset_id}...")
     final_path = asyncio.run(dataset.download(path))
     print(final_path)
 
@@ -288,12 +311,12 @@ def extract(
 ) -> None:
     """Extract files matching a pattern from a dataset's archive."""
     dataset = _get_dataset(dataset_id)
-    err.print(f"Extracting from {dataset.dataset_id}...", style="dim")
+    status(f"Extracting from {dataset.dataset_id}...")
     extracted = asyncio.run(dataset.extract(pattern, output_dir))
 
     if not extracted:
-        err.print(f"[yellow]No files matched pattern: {pattern}[/yellow]")
+        err_console.print(f"[yellow]No files matched pattern: {pattern}[/yellow]")
         raise typer.Exit(1)
 
-    for path in extracted:
-        print(path)
+    for extracted_path in extracted:
+        print(extracted_path)

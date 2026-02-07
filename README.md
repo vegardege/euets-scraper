@@ -69,6 +69,10 @@ euets extract "*.csv"                    # extract CSVs to current directory
 euets extract "Allowances*" ./data/      # extract matching files to ./data/
 euets extract "*.csv" s3://bucket/data/  # extract to S3 (requires [s3] extra)
 euets extract "*.csv" --id 1087604       # extract from specific dataset
+
+# Scripting
+euets -q download ./data/    # --quiet suppresses status messages, outputs path only
+euets -q extract "*.csv"     # outputs extracted paths only (one per line)
 ```
 
 ## Usage
