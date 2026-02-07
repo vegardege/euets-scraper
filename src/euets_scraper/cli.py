@@ -109,7 +109,12 @@ def ls(
     ),
 ) -> None:
     """List available datasets from the EU ETS datahub."""
-    result = asyncio.run(fetch_datasets(full=full))
+    if state.quiet:
+        result = asyncio.run(fetch_datasets(full=full))
+    else:
+        msg = "Fetching datasets..." if full else "Fetching current dataset..."
+        with err_console.status(msg):
+            result = asyncio.run(fetch_datasets(full=full))
 
     if json_output:
         print(json.dumps([ds.model_dump(mode="json") for ds in result.datasets]))
