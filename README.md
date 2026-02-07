@@ -52,6 +52,7 @@ euets ls --json    # JSON output for scripting
 
 # Get dataset info (latest by default, or specify --id)
 euets latest              # print latest dataset ID
+euets check --since ID    # exit 0 if newer dataset exists (for cron/ETL)
 euets url                 # print archive download URL
 euets url --id 1087604    # URL for specific dataset (prefix match supported)
 euets files               # list files in archive

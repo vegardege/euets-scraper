@@ -12,17 +12,19 @@ except ImportError:
 
 from euets_scraper.scraper import Dataset, fetch_datasets
 
-# Common prefixes to strip from titles
-PREFIX = "European Union Emissions Trading System (EU ETS) data from "
-
 app = typer.Typer(
     help="EU ETS Scraper - fetch carbon quota data from the EU ETS datahub.",
     no_args_is_help=True,
 )
+
+# stdout console for data output (tables)
 console = Console()
+# stderr console for status messages and errors
+err = Console(stderr=True)
 
-
-# --- Helper functions ---
+#
+# Helper functions
+#
 
 
 def _get_dataset(dataset_id: str | None = None) -> Dataset:
@@ -37,12 +39,12 @@ def _get_dataset(dataset_id: str | None = None) -> Dataset:
         for ds in result.datasets:
             if ds.dataset_id == dataset_id or ds.dataset_id.startswith(dataset_id):
                 return ds
-        console.print(f"[red]Dataset not found: {dataset_id}[/red]")
+        err.print(f"[red]Dataset not found: {dataset_id}[/red]")
         raise typer.Exit(1)
 
     current = [ds for ds in result.datasets if not ds.superseded]
     if not current:
-        console.print("[red]No current dataset found.[/red]")
+        err.print("[red]No current dataset found.[/red]")
         raise typer.Exit(1)
 
     return current[0]
@@ -58,7 +60,9 @@ def _format_size(size: int) -> str:
     return f"{sizef:.1f} TB"
 
 
-# --- Commands ---
+#
+# Commands
+#
 
 
 @app.command("ls")
@@ -86,7 +90,7 @@ def ls(
         return
 
     if not result.datasets and not result.errors:
-        console.print("[yellow]No datasets found.[/yellow]")
+        err.print("[yellow]No datasets found.[/yellow]")
         return
 
     if result.datasets:
@@ -102,8 +106,9 @@ def ls(
             short_id = ds.dataset_id[:8] if len(ds.dataset_id) > 8 else ds.dataset_id
 
             source = ds.title
-            if source.startswith(PREFIX):
-                source = source[len(PREFIX) :]
+            prefix = "European Union Emissions Trading System (EU ETS) data from "
+            if source.startswith(prefix):
+                source = source[len(prefix) :]
             if source.startswith("the "):
                 source = source[4:]
 
@@ -125,25 +130,25 @@ def ls(
         console.print(table)
 
     if result.errors:
-        console.print()
+        err.print()
         error_count = len(result.errors)
         if error_count == 1:
-            err = result.errors[0]
-            console.print(
-                f"[red]1 error:[/red] {err.dataset_id or 'unknown'}: {err.message}"
+            parse_err = result.errors[0]
+            err.print(
+                f"[red]1 error:[/red] {parse_err.dataset_id or 'unknown'}: {parse_err.message}"
             )
         else:
-            console.print(f"[red]{error_count} errors while parsing:[/red]")
+            err.print(f"[red]{error_count} errors while parsing:[/red]")
             by_message: dict[str, list[str]] = {}
-            for err in result.errors:
-                key = err.message
-                by_message.setdefault(key, []).append(err.dataset_id or "unknown")
+            for parse_err in result.errors:
+                key = parse_err.message
+                by_message.setdefault(key, []).append(parse_err.dataset_id or "unknown")
 
             for message, ids in by_message.items():
                 if len(ids) <= 3:
-                    console.print(f"  - {message}: {', '.join(ids)}")
+                    err.print(f"  - {message}: {', '.join(ids)}")
                 else:
-                    console.print(
+                    err.print(
                         f"  - {message}: {', '.join(ids[:2])} +{len(ids) - 2} more"
                     )
 
@@ -156,6 +161,37 @@ def latest() -> None:
     if not current:
         raise typer.Exit(1)
     print(current[0].dataset_id)
+
+
+@app.command("check")
+def check(
+    since: str = typer.Option(
+        ...,
+        "--since",
+        "-s",
+        help="Dataset ID to compare against. Prefix match supported.",
+    ),
+) -> None:
+    """Check if a newer dataset exists since the given ID.
+
+    Exits 0 if a newer dataset is available, 1 otherwise.
+    Useful for cron jobs: euets check --since abc123 && euets download
+    """
+    result = asyncio.run(fetch_datasets(full=False))
+    current = [ds for ds in result.datasets if not ds.superseded]
+    if not current:
+        raise typer.Exit(1)
+
+    latest_id = current[0].dataset_id
+
+    # Check if latest matches the since ID (prefix match supported)
+    if latest_id == since or latest_id.startswith(since):
+        # No newer dataset
+        raise typer.Exit(1)
+
+    # Newer dataset exists - print its ID
+    print(latest_id)
+    raise typer.Exit(0)
 
 
 @app.command("url")
@@ -228,8 +264,9 @@ def download(
 ) -> None:
     """Download the archive of a dataset to a file."""
     dataset = _get_dataset(dataset_id)
+    err.print(f"Downloading {dataset.dataset_id}...", style="dim")
     final_path = asyncio.run(dataset.download(path))
-    console.print(f"Downloaded to {final_path}")
+    print(final_path)
 
 
 @app.command("extract")
@@ -251,11 +288,12 @@ def extract(
 ) -> None:
     """Extract files matching a pattern from a dataset's archive."""
     dataset = _get_dataset(dataset_id)
+    err.print(f"Extracting from {dataset.dataset_id}...", style="dim")
     extracted = asyncio.run(dataset.extract(pattern, output_dir))
 
     if not extracted:
-        console.print(f"[yellow]No files matched pattern: {pattern}[/yellow]")
+        err.print(f"[yellow]No files matched pattern: {pattern}[/yellow]")
         raise typer.Exit(1)
 
     for path in extracted:
-        console.print(f"Extracted {path}")
+        print(path)
