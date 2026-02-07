@@ -12,17 +12,15 @@ except ImportError:
 
 from euets_scraper.scraper import Dataset, fetch_datasets
 
-# Common prefixes to strip from titles
-PREFIX = "European Union Emissions Trading System (EU ETS) data from "
-
 app = typer.Typer(
     help="EU ETS Scraper - fetch carbon quota data from the EU ETS datahub.",
     no_args_is_help=True,
 )
 console = Console()
 
-
-# --- Helper functions ---
+#
+# Helper functions
+#
 
 
 def _get_dataset(dataset_id: str | None = None) -> Dataset:
@@ -58,7 +56,9 @@ def _format_size(size: int) -> str:
     return f"{sizef:.1f} TB"
 
 
-# --- Commands ---
+#
+# Commands
+#
 
 
 @app.command("ls")
@@ -102,8 +102,9 @@ def ls(
             short_id = ds.dataset_id[:8] if len(ds.dataset_id) > 8 else ds.dataset_id
 
             source = ds.title
-            if source.startswith(PREFIX):
-                source = source[len(PREFIX) :]
+            prefix = "European Union Emissions Trading System (EU ETS) data from "
+            if source.startswith(prefix):
+                source = source[len(prefix) :]
             if source.startswith("the "):
                 source = source[4:]
 
@@ -156,6 +157,37 @@ def latest() -> None:
     if not current:
         raise typer.Exit(1)
     print(current[0].dataset_id)
+
+
+@app.command("check")
+def check(
+    since: str = typer.Option(
+        ...,
+        "--since",
+        "-s",
+        help="Dataset ID to compare against. Prefix match supported.",
+    ),
+) -> None:
+    """Check if a newer dataset exists since the given ID.
+
+    Exits 0 if a newer dataset is available, 1 otherwise.
+    Useful for cron jobs: euets check --since abc123 && euets download
+    """
+    result = asyncio.run(fetch_datasets(full=False))
+    current = [ds for ds in result.datasets if not ds.superseded]
+    if not current:
+        raise typer.Exit(1)
+
+    latest_id = current[0].dataset_id
+
+    # Check if latest matches the since ID (prefix match supported)
+    if latest_id == since or latest_id.startswith(since):
+        # No newer dataset
+        raise typer.Exit(1)
+
+    # Newer dataset exists - print its ID
+    print(latest_id)
+    raise typer.Exit(0)
 
 
 @app.command("url")
