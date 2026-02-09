@@ -1,5 +1,8 @@
 import asyncio
+import functools
 import json
+from collections.abc import Callable
+from typing import ParamSpec, TypeVar
 
 try:
     import typer
@@ -12,6 +15,10 @@ except ImportError:
     sys.exit(1)
 
 from euets_scraper.scraper import Dataset, fetch_datasets
+
+P = ParamSpec("P")
+R = TypeVar("R")
+
 
 app = typer.Typer(
     help="EU ETS Scraper - fetch carbon quota data from the EU ETS datahub.",
@@ -44,10 +51,20 @@ def main(
     state.quiet = quiet
 
 
-def status(msg: str) -> None:
-    """Print status message to stderr (respects --quiet)."""
-    if not state.quiet:
-        err_console.print(msg, style="dim")
+def with_spinner(message: str) -> Callable[[Callable[P, R]], Callable[P, R]]:
+    """Decorator to show a spinner while a command runs (respects --quiet)."""
+
+    def decorator(func: Callable[P, R]) -> Callable[P, R]:
+        @functools.wraps(func)
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+            if state.quiet:
+                return func(*args, **kwargs)
+            with err_console.status(message):
+                return func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
 
 
 #
@@ -94,6 +111,7 @@ def _format_size(size: int) -> str:
 
 
 @app.command("ls")
+@with_spinner("Fetching datasets")
 def ls(
     full: bool = typer.Option(
         False,
@@ -109,12 +127,7 @@ def ls(
     ),
 ) -> None:
     """List available datasets from the EU ETS datahub."""
-    if state.quiet:
-        result = asyncio.run(fetch_datasets(full=full))
-    else:
-        msg = "Fetching datasets..." if full else "Fetching current dataset..."
-        with err_console.status(msg):
-            result = asyncio.run(fetch_datasets(full=full))
+    result = asyncio.run(fetch_datasets(full=full))
 
     if json_output:
         print(json.dumps([ds.model_dump(mode="json") for ds in result.datasets]))
@@ -185,6 +198,7 @@ def ls(
 
 
 @app.command("latest")
+@with_spinner("Fetching latest dataset")
 def latest() -> None:
     """Print the ID of the most recent dataset."""
     result = asyncio.run(fetch_datasets(full=False))
@@ -225,6 +239,7 @@ def check(
 
 
 @app.command("url")
+@with_spinner("Fetching archive URL")
 def url(
     dataset_id: str | None = typer.Option(
         None,
@@ -242,6 +257,7 @@ def url(
 
 
 @app.command("files")
+@with_spinner("Fetching archive contents")
 def files(
     dataset_id: str | None = typer.Option(
         None,
@@ -258,12 +274,7 @@ def files(
 ) -> None:
     """Print a list of files in the archive of a dataset."""
     dataset = _get_dataset(dataset_id)
-
-    if state.quiet:
-        archive_files = asyncio.run(dataset.files())
-    else:
-        with err_console.status(f"Fetching files from {dataset.dataset_id}..."):
-            archive_files = asyncio.run(dataset.files())
+    archive_files = asyncio.run(dataset.files())
 
     if not archive_files:
         raise typer.Exit(1)
@@ -284,6 +295,7 @@ def files(
 
 
 @app.command("download")
+@with_spinner("Downloading archive")
 def download(
     path: str = typer.Argument(
         ".",
@@ -298,17 +310,13 @@ def download(
 ) -> None:
     """Download the archive of a dataset to a file."""
     dataset = _get_dataset(dataset_id)
-
-    if state.quiet:
-        final_path = asyncio.run(dataset.download(path))
-    else:
-        with err_console.status(f"Downloading {dataset.dataset_id}..."):
-            final_path = asyncio.run(dataset.download(path))
+    final_path = asyncio.run(dataset.download(path))
 
     print(final_path)
 
 
 @app.command("extract")
+@with_spinner("Extracting files")
 def extract(
     pattern: str = typer.Argument(
         ...,
@@ -327,12 +335,7 @@ def extract(
 ) -> None:
     """Extract files matching a pattern from a dataset's archive."""
     dataset = _get_dataset(dataset_id)
-
-    if state.quiet:
-        extracted = asyncio.run(dataset.extract(pattern, output_dir))
-    else:
-        with err_console.status(f"Extracting from {dataset.dataset_id}..."):
-            extracted = asyncio.run(dataset.extract(pattern, output_dir))
+    extracted = asyncio.run(dataset.extract(pattern, output_dir))
 
     if not extracted:
         err_console.print(f"[yellow]No files matched pattern: {pattern}[/yellow]")
