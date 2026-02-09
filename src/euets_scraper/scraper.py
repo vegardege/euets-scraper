@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup, Tag
 from pydantic import AnyUrl, BaseModel, PrivateAttr
 
 if TYPE_CHECKING:
-    from euets_scraper.archive import ArchiveFile, ProgressCallback
+    from euets_scraper.archive import ArchiveFile
 
 T = TypeVar("T")
 
@@ -47,23 +47,15 @@ class Dataset(BaseModel):
     _cached_archive_url: str | None = PrivateAttr(default=None)
     _cached_archive_bytes: bytes | None = PrivateAttr(default=None)
 
-    async def _get_archive_bytes(
-        self,
-        on_progress: "ProgressCallback | None" = None,
-    ) -> bytes:
-        """Get archive bytes, fetching and caching if needed.
-
-        Args:
-            on_progress: Optional callback called with (bytes_downloaded, total_bytes)
-                during the download. Only called on first fetch (not from cache).
-        """
+    async def _get_archive_bytes(self) -> bytes:
+        """Get archive bytes, fetching and caching if needed."""
         if self._cached_archive_bytes is None:
             from euets_scraper.archive import fetch_archive
 
             url = await self.url()
             if not url:
                 raise ValueError("No download URL available for this dataset")
-            self._cached_archive_bytes = await fetch_archive(url, on_progress)
+            self._cached_archive_bytes = await fetch_archive(url)
         return self._cached_archive_bytes
 
     async def url(self) -> str | None:
@@ -78,33 +70,19 @@ class Dataset(BaseModel):
                     self._cached_archive_url = await resolve_download_url(link.url)
         return self._cached_archive_url
 
-    async def files(
-        self,
-        on_progress: "ProgressCallback | None" = None,
-    ) -> list["ArchiveFile"]:
-        """Get a list of all files in the 'Direct download' archive.
-
-        Args:
-            on_progress: Optional callback called with (bytes_downloaded, total_bytes)
-                during the download.
-        """
+    async def files(self) -> list["ArchiveFile"]:
+        """Get a list of all files in the 'Direct download' archive."""
         from euets_scraper.archive import list_files_from_bytes
 
-        data = await self._get_archive_bytes(on_progress)
+        data = await self._get_archive_bytes()
         return list_files_from_bytes(data)
 
-    async def download(
-        self,
-        path: str | Path = ".",
-        on_progress: "ProgressCallback | None" = None,
-    ) -> str:
+    async def download(self, path: str | Path = ".") -> str:
         """Download the archive to a local or cloud path.
 
         Args:
             path: Destination path (local or cloud like s3://bucket/file.zip).
                   If a directory (local path or ends with /), uses {dataset_id}.zip as filename.
-            on_progress: Optional callback called with (bytes_downloaded, total_bytes)
-                during the download.
 
         Returns:
             The final path where the file was saved.
@@ -113,7 +91,7 @@ class Dataset(BaseModel):
         """
         from euets_scraper.archive import write_bytes_to_path
 
-        data = await self._get_archive_bytes(on_progress)
+        data = await self._get_archive_bytes()
 
         # Detect if path is a directory (local dir or trailing slash for cloud paths)
         path_str = str(path)
@@ -124,19 +102,12 @@ class Dataset(BaseModel):
         write_bytes_to_path(data, path_str)
         return path_str
 
-    async def extract(
-        self,
-        pattern: str,
-        output_dir: str | Path = ".",
-        on_progress: "ProgressCallback | None" = None,
-    ) -> list[str]:
+    async def extract(self, pattern: str, output_dir: str | Path = ".") -> list[str]:
         """Extract files matching a pattern from the archive.
 
         Args:
             pattern: Glob pattern to match filenames (e.g., "*.csv", "Allowances*")
             output_dir: Directory to extract to (local or cloud like s3://bucket/data/)
-            on_progress: Optional callback called with (bytes_downloaded, total_bytes)
-                during the download.
 
         Returns:
             List of paths where files were extracted.
@@ -145,7 +116,7 @@ class Dataset(BaseModel):
         """
         from euets_scraper.archive import extract_files_from_bytes
 
-        data = await self._get_archive_bytes(on_progress)
+        data = await self._get_archive_bytes()
         return extract_files_from_bytes(data, pattern, output_dir)
 
 

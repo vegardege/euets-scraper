@@ -4,13 +4,6 @@ import json
 try:
     import typer
     from rich.console import Console
-    from rich.progress import (
-        BarColumn,
-        DownloadColumn,
-        Progress,
-        TimeRemainingColumn,
-        TransferSpeedColumn,
-    )
     from rich.table import Table
 except ImportError:
     import sys
@@ -93,18 +86,6 @@ def _format_size(size: int) -> str:
             return f"{sizef:.1f} {unit}" if unit != "B" else f"{sizef} {unit}"
         sizef /= 1024
     return f"{sizef:.1f} TB"
-
-
-def _make_progress() -> Progress:
-    """Create a progress bar for downloads."""
-    return Progress(
-        "[progress.description]{task.description}",
-        BarColumn(),
-        DownloadColumn(),
-        TransferSpeedColumn(),
-        TimeRemainingColumn(),
-        console=err_console,
-    )
 
 
 #
@@ -281,13 +262,8 @@ def files(
     if state.quiet:
         archive_files = asyncio.run(dataset.files())
     else:
-        with _make_progress() as progress:
-            task = progress.add_task(f"Downloading {dataset.dataset_id}...", total=None)
-
-            def on_progress(downloaded: int, total: int) -> None:
-                progress.update(task, completed=downloaded, total=total or None)
-
-            archive_files = asyncio.run(dataset.files(on_progress))
+        with err_console.status(f"Fetching files from {dataset.dataset_id}..."):
+            archive_files = asyncio.run(dataset.files())
 
     if not archive_files:
         raise typer.Exit(1)
@@ -326,13 +302,8 @@ def download(
     if state.quiet:
         final_path = asyncio.run(dataset.download(path))
     else:
-        with _make_progress() as progress:
-            task = progress.add_task(f"Downloading {dataset.dataset_id}...", total=None)
-
-            def on_progress(downloaded: int, total: int) -> None:
-                progress.update(task, completed=downloaded, total=total or None)
-
-            final_path = asyncio.run(dataset.download(path, on_progress))
+        with err_console.status(f"Downloading {dataset.dataset_id}..."):
+            final_path = asyncio.run(dataset.download(path))
 
     print(final_path)
 
@@ -360,13 +331,8 @@ def extract(
     if state.quiet:
         extracted = asyncio.run(dataset.extract(pattern, output_dir))
     else:
-        with _make_progress() as progress:
-            task = progress.add_task(f"Downloading {dataset.dataset_id}...", total=None)
-
-            def on_progress(downloaded: int, total: int) -> None:
-                progress.update(task, completed=downloaded, total=total or None)
-
-            extracted = asyncio.run(dataset.extract(pattern, output_dir, on_progress))
+        with err_console.status(f"Extracting from {dataset.dataset_id}..."):
+            extracted = asyncio.run(dataset.extract(pattern, output_dir))
 
     if not extracted:
         err_console.print(f"[yellow]No files matched pattern: {pattern}[/yellow]")

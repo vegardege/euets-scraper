@@ -3,7 +3,7 @@
 import fnmatch
 import io
 import zipfile
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -13,9 +13,6 @@ from pydantic import AnyUrl, BaseModel
 
 # Default timeout for HTTP requests (seconds)
 DEFAULT_TIMEOUT = 120.0
-
-# Type alias for progress callback: (bytes_downloaded, total_bytes) -> None
-ProgressCallback = Callable[[int, int], None]
 
 
 class ArchiveFile(BaseModel):
@@ -61,29 +58,12 @@ def _get_file_type(filename: str) -> str:
     return ext if ext != filename.lower() else ""
 
 
-async def fetch_archive(
-    url: str | AnyUrl,
-    on_progress: ProgressCallback | None = None,
-) -> bytes:
-    """Fetch a remote zip archive and return its contents as bytes.
-
-    Args:
-        url: URL of the zip archive
-        on_progress: Optional callback called with (bytes_downloaded, total_bytes).
-            total_bytes is 0 if Content-Length header is missing.
-    """
+async def fetch_archive(url: str | AnyUrl) -> bytes:
+    """Fetch a remote zip archive and return its contents as bytes."""
     async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
-        async with client.stream("GET", str(url)) as resp:
-            resp.raise_for_status()
-            total = int(resp.headers.get("content-length", 0))
-            chunks: list[bytes] = []
-            downloaded = 0
-            async for chunk in resp.aiter_bytes():
-                chunks.append(chunk)
-                downloaded += len(chunk)
-                if on_progress:
-                    on_progress(downloaded, total)
-            return b"".join(chunks)
+        resp = await client.get(str(url))
+        resp.raise_for_status()
+    return resp.content
 
 
 def list_files_from_bytes(data: bytes) -> list[ArchiveFile]:
@@ -145,37 +125,25 @@ def extract_files_from_bytes(
 #
 
 
-async def list_archive_files(
-    url: str | AnyUrl,
-    on_progress: ProgressCallback | None = None,
-) -> list[ArchiveFile]:
+async def list_archive_files(url: str | AnyUrl) -> list[ArchiveFile]:
     """List the files contained in a remote zip archive.
 
     Downloads the archive to memory and reads its contents.
-
-    Args:
-        url: URL of the zip archive
-        on_progress: Optional callback called with (bytes_downloaded, total_bytes).
     """
-    data = await fetch_archive(url, on_progress)
+    data = await fetch_archive(url)
     return list_files_from_bytes(data)
 
 
-async def download_archive(
-    url: str | AnyUrl,
-    path: str | Path,
-    on_progress: ProgressCallback | None = None,
-) -> None:
+async def download_archive(url: str | AnyUrl, path: str | Path) -> None:
     """Download a remote zip archive to a local or cloud path.
 
     Args:
         url: URL of the zip archive
         path: Destination path (local or cloud like s3://bucket/file.zip)
-        on_progress: Optional callback called with (bytes_downloaded, total_bytes).
 
     For cloud paths, requires the [cloud] extra.
     """
-    data = await fetch_archive(url, on_progress)
+    data = await fetch_archive(url)
     write_bytes_to_path(data, path)
 
 
@@ -183,7 +151,6 @@ async def extract_files(
     url: str | AnyUrl,
     pattern: str,
     output_dir: str | Path = ".",
-    on_progress: ProgressCallback | None = None,
 ) -> list[str]:
     """Extract files matching a pattern from a remote zip archive.
 
@@ -191,12 +158,11 @@ async def extract_files(
         url: URL of the zip archive
         pattern: Glob pattern to match filenames (e.g., "*.csv", "Allowances*")
         output_dir: Directory to extract to (local or cloud like s3://bucket/data/)
-        on_progress: Optional callback called with (bytes_downloaded, total_bytes).
 
     Returns:
         List of paths where files were extracted.
 
     For cloud paths, requires the [cloud] extra.
     """
-    data = await fetch_archive(url, on_progress)
+    data = await fetch_archive(url)
     return extract_files_from_bytes(data, pattern, output_dir)
