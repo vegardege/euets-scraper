@@ -20,15 +20,6 @@ P = ParamSpec("P")
 R = TypeVar("R")
 
 
-app = typer.Typer(
-    help="EU ETS Scraper - fetch carbon quota data from the EU ETS datahub.",
-    no_args_is_help=True,
-)
-
-console = Console()
-err_console = Console(stderr=True)
-
-
 class State:
     """Global state for CLI options."""
 
@@ -36,19 +27,14 @@ class State:
 
 
 state = State()
+console = Console()
+err_console = Console(stderr=True)
+app = typer.Typer(help="EU ETS Scraper", no_args_is_help=True)
 
 
-@app.callback()
-def main(
-    quiet: bool = typer.Option(
-        False,
-        "--quiet",
-        "-q",
-        help="Suppress status messages (errors still shown)",
-    ),
-) -> None:
-    """EU ETS Scraper - fetch carbon quota data from the EU ETS datahub."""
-    state.quiet = quiet
+#
+# Helper functions
+#
 
 
 def with_spinner(message: str) -> Callable[[Callable[P, R]], Callable[P, R]]:
@@ -65,11 +51,6 @@ def with_spinner(message: str) -> Callable[[Callable[P, R]], Callable[P, R]]:
         return wrapper
 
     return decorator
-
-
-#
-# Helper functions
-#
 
 
 def _get_dataset(dataset_id: str | None = None) -> Dataset:
@@ -108,6 +89,19 @@ def _format_size(size: int) -> str:
 #
 # Commands
 #
+
+
+@app.callback()
+def main(
+    quiet: bool = typer.Option(
+        False,
+        "--quiet",
+        "-q",
+        help="Suppress status messages (errors still shown)",
+    ),
+) -> None:
+    """EU ETS Scraper - fetch carbon quota data from the EU ETS datahub."""
+    state.quiet = quiet
 
 
 @app.command("ls")
