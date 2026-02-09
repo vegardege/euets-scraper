@@ -1,5 +1,6 @@
 from euets_scraper.archive import (
     ArchiveFile,
+    ProgressCallback,
     download_archive,
     extract_files,
     list_archive_files,
@@ -21,6 +22,7 @@ __all__ = [
     "ETSResult",
     "Link",
     "ParseError",
+    "ProgressCallback",
     "download_archive",
     "extract_files",
     "fetch_datasets",
